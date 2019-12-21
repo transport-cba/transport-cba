@@ -1,0 +1,7 @@
+polluant,area,price_level,unit,value,gdp_growth_adjustment
+NOx,,2010,eur/t,21491,0.7
+NMVOC,,2010,eur/t,1709,0.7
+SO2,,2010,eur/t,17134,0.7
+PM2.5,rural,2010,eur/t,54030,0.7
+PM2.5,suburban,2010,eur/t,79270,0.7
+PM2.5,urban,2010,eur/t,226510,0.7

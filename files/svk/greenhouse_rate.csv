@@ -1,0 +1,16 @@
+polluant,factor,vehicle,fuel,unit,value
+co2,1.0,car,petrol,g/kg,3180.0
+,,car,diesel,g/kg,3140.0
+,,bus,diesel,g/kg,3140.0
+,,lgv,diesel,g/kg,3140.0
+,,hgv,diesel,g/kg,3140.0
+ch4,25.0,car,petrol,g/kg,1.09
+,,car,diesel,g/kg,0.23
+,,bus,diesel,g/kg,0.27
+,,lgv,diesel,g/kg,0.27
+,,hgv,diesel,g/kg,0.27
+n2o,298.0,car,petrol,g/kg,0.206
+,,car,diesel,g/kg,0.087
+,,bus,diesel,g/kg,0.051
+,,lgv,diesel,g/kg,0.051
+,,hgv,diesel,g/kg,0.051

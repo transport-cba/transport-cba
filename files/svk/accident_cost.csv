@@ -1,0 +1,6 @@
+item,unit,fatal,severe_injury,light_injury,damage
+value,eur/pass,1593000.0,219700.0,15700.0,3233.0
+price_level,year,2010.0,2010.0,2010.0,2015.0
+gdp_growth_adjustment,,0.7,0.7,0.7,0.7
+correction_unreported,,1.02,1.5,3.0,6.0
+correction_passengers,pass/acc,1.1085,1.1239,1.3154,1.0

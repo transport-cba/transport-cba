@@ -1,5 +1,5 @@
 import pandas as pd
-from numpy import arange, ones_like
+from numpy import arange, ones_like, where
 
 
 available_countries = ["svk"]
@@ -18,6 +18,9 @@ class DataContainer(object):
         
         self.df_raw = {}
         self.df_clean = {}
+        self.TM = {}
+        self.TM_fin = {}
+
         self.read_data()
 
 
@@ -32,32 +35,54 @@ class DataContainer(object):
         self.gdp_growth = pd.read_csv(self.dirn + "gdp_growth.csv", \
             index_col="year")
         self.cpi = pd.read_csv(self.dirn + "cpi.csv", index_col="year")
-        #self.fuel_rho = pd.read_csv(self.dirn + "fuel_density.csv", index_col="fuel")
 
         # financial data
-        self.df_raw["op_cost"] =\
+        self.df_raw["c_op"] = \
             pd.read_csv(self.dirn + "operation_cost.csv", index_col=0)
-        self.df_raw["res_val"] =\
+        self.df_raw["res_val"] = \
             pd.read_csv(self.dirn + "residual_value.csv", index_col=0)
+
+        # physical
+        self.fuel_rho = \
+            pd.read_csv(self.dirn + "fuel_density.csv", index_col="fuel")
 
         # economic data
         self.df_raw["conv_fac"] =\
             pd.read_csv(self.dirn + "conversion_factors.csv", index_col=0)
-        self.df_raw["p_occ"] = pd.read_csv(self.dirn + "passenger_occupancy.csv", index_col=0)
-        self.df_raw["f_occ"] = pd.read_csv(self.dirn + "freight_occupancy.csv", index_col=0)
-        self.df_raw["tp"] = pd.read_csv(self.dirn + "trip_purpose.csv", index_col=0)
-        self.df_raw["vtts"] = pd.read_csv(self.dirn + "vtts.csv", index_col=0)
-        self.df_raw["voc"] = pd.read_csv(self.dirn + "voc.csv", index_col=0)
-        self.df_raw["r_fuel"] = pd.read_csv(self.dirn + "fuel_consumption.csv", index_col=0)
-        self.df_raw["c_fuel"] = pd.read_csv(self.dirn + "fuel_cost.csv", index_col=0)
-        self.df_raw["r_acc"] = pd.read_csv(self.dirn + "accident_rate.csv", index_col=0)
-        self.df_raw["c_acc"] = pd.read_csv(self.dirn + "accident_cost.csv", index_col=0)
-        self.df_raw["r_gg"] = pd.read_csv(self.dirn + "greenhouse_rate.csv", index_col=0)
-        self.df_raw["c_gg"] = pd.read_csv(self.dirn + "greenhouse_cost.csv", index_col=0)
-        self.df_raw["r_em"] = pd.read_csv(self.dirn + "emission_rate.csv", index_col=0)
-        self.df_raw["c_em"] = pd.read_csv(self.dirn + "emission_cost.csv", index_col=0)
-        self.df_raw["noise"] = pd.read_csv(self.dirn + "noise.csv", index_col=0)
+        self.df_raw["occ_p"] =\
+            pd.read_csv(self.dirn + "passenger_occupancy.csv", index_col=0)
+        self.df_raw["occ_f"] =\
+            pd.read_csv(self.dirn + "freight_occupancy.csv", index_col=0)
+        self.df_raw["r_tp"] =\
+            pd.read_csv(self.dirn + "trip_purpose.csv", index_col=0)
+        self.df_raw["vtts"] =\
+            pd.read_csv(self.dirn + "vtts.csv", index_col=0)
+        self.df_raw["voc"] =\
+            pd.read_csv(self.dirn + "voc.csv", index_col=0)
+        self.df_raw["r_fuel"] =\
+            pd.read_csv(self.dirn + "fuel_consumption.csv", index_col=0)
+        self.df_raw["c_fuel"] =\
+            pd.read_csv(self.dirn + "fuel_cost.csv", index_col=0)
+        self.df_raw["r_acc"] =\
+            pd.read_csv(self.dirn + "accident_rate.csv", index_col=0)
+        self.df_raw["c_acc"] =\
+            pd.read_csv(self.dirn + "accident_cost.csv", index_col=0)
+        self.df_raw["r_gg"] =\
+            pd.read_csv(self.dirn + "greenhouse_rate.csv", index_col=0)
+        self.df_raw["c_gg"] =\
+            pd.read_csv(self.dirn + "greenhouse_cost.csv", index_col=0)
+        self.df_raw["r_em"] =\
+            pd.read_csv(self.dirn + "emission_rate.csv", index_col=0)
+        self.df_raw["c_em"] =\
+            pd.read_csv(self.dirn + "emission_cost.csv", index_col=0)
+        self.df_raw["noise"] =\
+            pd.read_csv(self.dirn + "noise.csv", index_col=0)
         
+
+#    def adjust_gdp_growth(self):
+#        """Create new column with GDP indexing"""
+#        self.gdp_growth["gdp_growth_index"] = self.gdp_growth.gdp_growth + 1.0
+
 
     def adjust_cpi(self, infl=0.02, N_bw=20, N_fw=30, verbose=False):
         """Fill in mising values and compute cumulative inflation 
@@ -105,29 +130,23 @@ class DataContainer(object):
         """Remove unimportant columns and populate the df_clean dictionary"""
         for itm in self.df_raw.keys():
             if verbose:
-                print(itm)
+                print("Cleaning: %s" % itm)
             self.df_clean[itm] = self.df_raw[itm].copy()
             if "nb" in self.df_clean[itm].columns:
                 self.df_clean[itm].drop(columns=["nb"], inplace=True)
             if "unit" in self.df_clean[itm].columns:
                 self.df_clean[itm].drop(columns=["unit"], inplace=True)
         
-        for c in ["op_cost", "vtts", "voc", "c_acc", "c_gg", "c_em", "noise"]:
+        for c in ["c_op", "vtts", "voc", "c_acc", "c_gg", "c_em", "noise"]:
             if "scale" in self.df_clean[c].columns:
                  self.df_clean[c]["value"] =\
                     self.df_clean[c].value * self.df_clean[c].scale
                  self.df_clean[c].drop(columns=["scale"], inplace=True)
 
-#        # different accident rate dataframe
-#        c = "r_acc"
-#        for col in ["fatal","severe_injury","light_injury","damage"]:
-#            self.df_clean[c][col] = self.df_clean[c].col * self.df_clean[c].scale
-#            self.df_clean[c].drop(columns=["scale"], inplace=True)
-
 
     def adjust_price_level(self, verbose=False):
         """Unify the prices for one price level"""
-        for c in ["op_cost", "vtts", "voc", "c_fuel", "c_acc", "c_gg", "c_em", "noise"]:
+        for c in ["c_op", "vtts", "voc", "c_fuel", "c_acc", "c_gg", "c_em", "noise"]:
             if verbose:
                 print("Adjusting: %s" % c)
             self.df_clean[c]["value"] = self.df_clean[c].value \
@@ -139,13 +158,31 @@ class DataContainer(object):
 
     def wrangle_data(self):
         self._wrangle_vtts()
+        self._wrangle_fuel()
         self._wrangle_accidents()
+        self._wrangle_emissions()
         self._wrangle_noise()
+
+
+    def _wrangle_opex(self, verbose=False):
+        """Set index and add conversion factors"""
+        c = "c_op"
+        self.df_clean[c]["conv_fac"] = where(
+            self.df_clean[c].operation_type == "periodic", 
+            self.df_clean["conv_fac"].loc["periodic"]["aggregate"],
+            self.df_clean["conv_fac"].loc["routine"]["aggregate"])
+        self.df_clean[c]["value_eco"] = \
+            self.df_clean[c].value * self.df_clean[c].conv_fac
+
+        self.df_clean[c].rename(columns={"value": "value_fin"}, inplace=True)
+        
+        self.df_clean[c].reset_index(inplace=True)
+        self.df_clean[c].set_index(\
+            ["item","operation_type","section_type"], inplace=True)
 
 
     def _wrangle_vtts(self, verbose=False):
         """Average the value of the travel time saved"""
-        
         if "distance" in self.df_clean["vtts"].columns:
             if verbose:
                 print("Contracting distance.")
@@ -157,21 +194,21 @@ class DataContainer(object):
             vtts = self.df_clean["vtts"].copy()
 
         # add trip purpose and merge
-        tp = self.df_clean["tp"].reset_index().melt(id_vars="vehicle", \
+        r_tp = self.df_clean["r_tp"].reset_index().melt(id_vars="vehicle", \
             var_name="purpose", value_name="purpose_ratio")
-        vtts = pd.merge(vtts, tp, how="left", on=["vehicle","purpose"])
+        vtts = pd.merge(vtts, r_tp, how="left", on=["vehicle","purpose"])
 
         # add passenger occupancy
-        self.df_clean["p_occ"]["substance"] = "passengers"
-        self.df_clean["p_occ"].reset_index(inplace=True)
+        self.df_clean["occ_p"]["substance"] = "passengers"
+        self.df_clean["occ_p"].reset_index(inplace=True)
         
-        vtts = pd.merge(vtts, self.df_clean["p_occ"][["vehicle","value","substance"]],
+        vtts = pd.merge(vtts, self.df_clean["occ_p"][["vehicle","value","substance"]],
              how="left", on=["vehicle","substance"], suffixes=("", "_occ"))
 
         # add freight occupancy
-        self.df_clean["f_occ"]["substance"] = "freight"
-        self.df_clean["f_occ"].reset_index(inplace=True)
-        vtts = pd.merge(vtts, self.df_clean["f_occ"][["vehicle","value","substance"]],
+        self.df_clean["occ_f"]["substance"] = "freight"
+        self.df_clean["occ_f"].reset_index(inplace=True)
+        vtts = pd.merge(vtts, self.df_clean["occ_f"][["vehicle","value","substance"]],
              how="left", on=["vehicle","substance"], suffixes=("", "_freight"))
 
         vtts["value_occ"] = vtts.value_occ.fillna(vtts.value_freight)
@@ -186,7 +223,7 @@ class DataContainer(object):
             "gdp_growth_adjustment","purpose_ratio"])\
             ["value"].sum().reset_index()
 
-        # unify gdp growth adjustment
+        # unify gdp growth adjustment by trip purpose ratio
         vtts["gdp_ga2"] = vtts.purpose_ratio * vtts.gdp_growth_adjustment
         vtts["value2"] = vtts.purpose_ratio * vtts.value
 
@@ -197,14 +234,53 @@ class DataContainer(object):
         self.df_clean["vtts"] = vtts.copy()
 
 
+    def _wrangle_fuel(self, verbose=True):
+        """Convert units from eur/l to eur/kg"""
+        c = "c_fuel"
+        self.df_clean[c]["value"] = \
+            self.df_clean[c].value * self.fuel_rho.value
+
+        c = "r_fuel"
+        self.df_clean[c] = pd.merge(self.df_clean[c], 
+            self.fuel_rho.drop(columns=["unit"]), how="left", on="fuel")
+        
+        # multiply polynomial coefficients by density
+        for itm in ["a0", "a1", "a2", "a3"]:
+            self.df_clean[c][itm] = \
+                self.df_clean[c][itm] * self.df_clean[c].value
+        self.df_clean[c].drop(columns=["value"], inplace=True)
+
+
     def _wrangle_accidents(self, verbose=False):
+        """Unify the two datasets storing values for accidents"""
         self.df_clean["c_acc"]["value"] = self.df_clean["c_acc"].value *\
             self.df_clean["c_acc"].correct_unreported *\
             self.df_clean["c_acc"].correct_pass_per_acc
         self.df_clean["c_acc"].drop(columns=["correct_unreported",\
             "correct_pass_per_acc"], inplace=True)
         
-        # ADD CONTRACTION WITH ACCIDENT RATE
+        self.df_clean["r_acc"]["value"] = \
+            self.df_clean["r_acc"]\
+            [["fatal","severe_injury","light_injury","damage"]]\
+            .values @ self.df_clean["c_acc"].value.values
+
+        self.df_clean["r_acc"]["gdp_growth_adjustment"] = \
+            self.df_clean["c_acc"].gdp_growth_adjustment.values[0]
+        
+        # copy to the cost dataframe
+        self.df_clean["c_acc"] = self.df_clean["r_acc"]\
+            [["lanes","label","area","value","gdp_growth_adjustment"]].copy()
+
+        self.df_clean["c_acc"].reset_index(inplace=True)
+        self.df_clean["c_acc"].set_index(\
+            ["road_type","lanes","label","area"], inplace=True)
+
+
+    def _wrangle_emissions(self, verbose=False):
+        b = "c_em"
+        self.df_clean[b].reset_index()\
+            .set_index(["polluant","area"], inplace=True)
+
 
     def _wrangle_noise(self, verbose=False):
         c = "noise"
@@ -219,21 +295,41 @@ class DataContainer(object):
         self.df_clean[c] = gr["value2"].sum()
         self.df_clean[c] = self.df_clean[c].reset_index()
         self.df_clean[c].rename(columns={"value2": "value"}, inplace=True)
-        self.df_clean[c].set_index("vehicle", inplace=True)
+        self.df_clean[c].set_index(["vehicle","area"], inplace=True)
 
 
-    def create_time_benefit_matrices(self):
+    def create_time_benefit_mat(self, y_start, N_yr, verbose=True):
         """Define the time-cost matrices for each benefit"""
-        for b in ["vtts", "voc", "acc", "em", "noise"]:
-            # define the matrix for the years
-            # populate it with GDP-adjusted growth and inflation
-            # treat greenhouse differently due to varying cost
-            pass
+        yrs = arange(y_start, y_start + N_yr)
+        for b in ["vtts", "voc", "c_acc", "c_em", "noise"]:
+            if verbose:
+                print("Creating: %s" % b)
+            self.TM[b] = pd.DataFrame(columns=yrs, index=self.df_clean[b].index)
+            self.TM[b][y_start] = self.df_clean[b].value
+            for yr in yrs[1:]:
+                # CHECK INFLATION INDEXING
+                self.TM[b][yr] = self.TM[b][yr-1] #* self.cpi.loc[yr].cpi_index
+                if "gdp_growth_adjustment" in self.df_clean[b].columns:
+                    self.TM[b][yr] = self.TM[b][yr] \
+                    * (1.0 + self.gdp_growth.loc[yr].gdp_growth \
+                    * self.df_clean[b].gdp_growth_adjustment)
+
+        b = "gg"
 
     
-    def create_time_op_matrices(self):
-        # create the matrix for the cost of road operation with time
-        pass
+    def create_time_opex_mat(self, y_start, N_yr, verbose=True):
+        c = "c_op"
+        yrs = arange(y_start, y_start + N_yr)
+
+        self.TM_fin[c] = pd.DataFrame(columns=yrs, index=self.df_clean[c].index)
+        self.TM_fin[c][y_start] = self.df_clean[c].value_fin
+        for yr in yrs[1:]:
+            self.TM_fin[c][yr] = self.TM_fin[c][yr-1] * self.cpi.loc[yr].cpi_index
+
+        self.TM[c] = pd.DataFrame(columns=yrs, index=self.df_clean[c].index)
+        self.TM[c][y_start] = self.df_clean[c].value_eco
+        for yr in yrs[1:]:
+            self.TM[c][yr] = self.TM[c][yr-1] * self.cpi.loc[yr].cpi_index
 
 
 

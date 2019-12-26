@@ -12,17 +12,9 @@ bus,passengers,2016,business,short,eur/passh,12.65,0.7
 bus,passengers,2016,commute,short,eur/passh,4.22,0.5
 bus,passengers,2016,private,short,eur/passh,3.54,0.5
 lgv,passengers,2016,business,long,eur/passh,15.76,0.7
-lgv,passengers,2016,commute,long,eur/passh,,0.5
-lgv,passengers,2016,private,long,eur/passh,,0.5
 lgv,passengers,2016,business,short,eur/passh,15.76,0.7
-lgv,passengers,2016,commute,short,eur/passh,,0.5
-lgv,passengers,2016,private,short,eur/passh,,0.5
 hgv,passengers,2016,business,long,eur/passh,15.76,0.7
-hgv,passengers,2016,commute,long,eur/passh,,0.5
-hgv,passengers,2016,private,long,eur/passh,,0.5
 hgv,passengers,2016,business,short,eur/passh,15.76,0.7
-hgv,passengers,2016,commute,short,eur/passh,,0.5
-hgv,passengers,2016,private,short,eur/passh,,0.5
 lgv,freight,2016,business,long,eur/th,0.4,0.7
 lgv,freight,2016,business,short,eur/th,0.4,0.7
 hgv,freight,2016,business,long,eur/th,0.4,0.7

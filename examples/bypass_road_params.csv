@@ -1,4 +1,4 @@
-id_section,variant,name,length,type,category,lanes,area,width,label
+id_section,variant,name,length,type,category,lanes,environment,width,label
 0,0,entrance,0.5,road,standard,2,extravilan,9.5,
 1,0,city,4.0,road,standard,2,intravilan,9.5,
 2,0,exit,0.5,road,standard,2,extravilan,9.5,

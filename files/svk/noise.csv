@@ -1,4 +1,4 @@
-vehicle,time_of_day,ratio,traffic_type,area,price_level,unit,scale,value,gdp_growth_adjustment
+vehicle,time_of_day,ratio,traffic_type,environment,price_level,unit,scale,value,gdp_growth_adjustment
 car,daytime,0.9,dense,intravilan,2010,eur/vehkm,0.001,6.4,0.7
 car,daytime,0.9,thin,intravilan,2010,eur/vehkm,0.001,15.7,0.7
 car,nighttime,0.1,dense,intravilan,2010,eur/vehkm,0.001,11.8,0.7

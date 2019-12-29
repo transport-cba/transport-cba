@@ -1,4 +1,4 @@
-item,operation_type,section_type,price_level,periodicity,unit,value
+item,operation_type,category,price_level,periodicity,unit,value
 road_marking,periodic,motorway,2016,6,eur/m2,7.0
 pavements_repair,periodic,motorway,2016,6,eur/m2,5.0
 pavements_renewal,periodic,motorway,2016,12,eur/m2,20.0

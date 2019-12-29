@@ -1,4 +1,4 @@
-polluant,area,price_level,unit,value,gdp_growth_adjustment
+polluant,environment,price_level,unit,value,gdp_growth_adjustment
 NOx,extravilan,2010,eur/t,21491,0.7
 NOx,intravilan,2010,eur/t,21491,0.7
 NMVOC,extravilan,2010,eur/t,1709,0.7

@@ -1,9 +1,11 @@
 import pandas as pd
 import numpy as np
+from numpy.matlib import repmat
 from .data_container import DataContainer
 
 
-veh_cats = ["car", "lgv", "hgv", "bus"]
+VEHICLE_TYPES = ["car", "lgv", "hgv", "bus"]
+DAYS_YEAR = 365
 
 
 class RoadCBA(DataContainer):
@@ -55,8 +57,13 @@ class RoadCBA(DataContainer):
         self.I1 = None
         self.V0 = None
         self.V1 = None
+        self.T0 = None
+        self.T1 = None
 
         self.TM = {}
+        self.B0 = {}
+        self.B1 = {}
+        self.NB = {}
 
         super().__init__(self.country, self.yr_i)
 
@@ -100,7 +107,10 @@ class RoadCBA(DataContainer):
         self.I1 = df_int_1
         # VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
 
+        # assign core variables
         self._assign_remaining_years()
+        self.secs_0 = self.R[self.R.variant == 0].index
+        self.secs_1 = self.R.index
 
     
     def read_project_inputs_csv(self,
@@ -115,13 +125,16 @@ class RoadCBA(DataContainer):
             print("Reading project inputs from csv...")
         self.R = pd.read_csv(file_road_params, index_col=0)
         self.C_fin = pd.read_csv(file_capex, index_col=0)
-        self.I0 = pd.read_csv(file_int_0)
-        self.I0.set_index(["id_section", "vehicle"], inplace=True)
-        self.I1 = pd.read_csv(file_int_1)
-        self.I1.set_index(["id_section", "vehicle"], inplace=True)
+        self.I0 = pd.read_csv(file_int_0).reset_index()
+        self_I0.set_index(["id_section", "vehicle"], inplace=True)
+        self.I1 = pd.read_csv(file_int_1).reset_index()
+        self.I1.reset_index().set_index(["id_section", "vehicle"], inplace=True)
         # VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
 
+        # assign core variables
         self._assign_remaining_years()
+        self.secs_0 = self.R[self.R.variant == 0].index
+        self.secs_1 = self.R.index
 
 
     def read_project_inputs_excel(self, file_xls, verbose=False):
@@ -131,13 +144,16 @@ class RoadCBA(DataContainer):
         xls = pd.ExcelFile(file_xls)
         self.R = xls.parse("road_params", index_col=0)
         self.C_fin = xls.parse("capex_fin", index_col=0)
-        self.I0 = xls.parse("intensities_0")
+        self.I0 = xls.parse("intensities_0").reset_index()
         self.I0.set_index(["id_section", "vehicle"], inplace=True)
-        self.I1 = xls.parse("intensities_1")
+        self.I1 = xls.parse("intensities_1").reset_index()
         self.I1.set_index(["id_section", "vehicle"], inplace=True)
         # VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
 
+        # assign core variables
         self._assign_remaining_years()
+        self.secs_0 = self.R[self.R.variant == 0].index
+        self.secs_1 = self.R.index
 
 
     def read_intensities(self, df_int_0, df_int_1):
@@ -179,9 +195,9 @@ class RoadCBA(DataContainer):
 
         if verbose:
             print("Reading velocities from csv...")
-        self.V0 = pd.read_csv(csv_vel_0)
+        self.V0 = pd.read_csv(csv_vel_0).reset_index()
         self.V0.set_index(["id_section", "vehicle"], inplace=True)
-        self.V1 = pd.read_csv(csv_vel_1)
+        self.V1 = pd.read_csv(csv_vel_1).reset_index()
         self.V1.set_index(["id_section", "vehicle"], inplace=True)
 
 
@@ -244,40 +260,18 @@ class RoadCBA(DataContainer):
     def _create_time_opex_mat(self, verbose=True):
         if verbose:
             print("Creating time matrix for OPEX...")
-
         c = "c_op"
 
         self.TM[c] = \
             pd.DataFrame(columns=self.yrs_op, index=self.df_clean[c].index)
 
         self.TM[c][self.yr_op] = self.df_clean[c].value
+        # FIX ERROR IN CPI INDEXING
         for yr in self.yrs_op[1:]:
             self.TM[c][yr] = \
                 self.TM[c][self.yr_op] * self.cpi.loc[yr, "cpi_index"]
         
         self.TM[c] = self.TM[c].round(2)
-
-#        # financial
-#        self.TM_fin[c] = \
-#            pd.DataFrame(columns=self.yrs_op, index=self.df_clean[c].index)
-#
-#        self.TM_fin[c][self.yr_op] = self.df_clean[c].value_fin
-#        for yr in self.yrs_op[1:]:
-#            self.TM_fin[c][yr] = \
-#                self.TM_fin[c][self.yr_op] * self.cpi.loc[yr].cpi_index
-#
-#        # economic
-#        self.TM_eco[c] = \
-#            pd.DataFrame(columns=self.yrs_op, index=self.df_clean[c].index)
-#
-#        self.TM_eco[c][self.yr_op] = self.df_clean[c].value_eco
-#        for yr in self.yrs_op[1:]:
-#            self.TM_eco[c][yr] = \
-#                self.TM_eco[c][self.yr_op] * self.cpi.loc[yr].cpi_index
-#
-#        self.TM_fin[c] = self.TM_fin[c].round(2)
-#        self.TM_eco[c] = self.TM_eco[c].round(2)
-#        # ALTERNATIVE: can do by np.outer
 
 
     def _create_time_opex_mask(self):
@@ -309,7 +303,7 @@ class RoadCBA(DataContainer):
         pass
 
 
-    def _create_time_benefit_mat(self, verbose=True):
+    def _create_time_benefit_mat(self, verbose=False):
         """Define the time-cost matrices for each benefit"""
         if verbose:
             print("Creating time matrices for benefits...")
@@ -318,22 +312,61 @@ class RoadCBA(DataContainer):
             if verbose:
                 print("Creating: %s" % b)
             self.TM[b] = \
-                pd.DataFrame(columns=self.yrs_op, index=self.df_clean[b].index)
-            self.TM[b][y_start] = self.df_clean[b].value
-            for yr in self.yrs_op[1:]:
+                pd.DataFrame(columns=self.yrs, index=self.df_clean[b].index)
+            self.TM[b][self.yr_i] = self.df_clean[b].value
+            for yr in self.yrs[1:]:
                 self.TM[b][yr] = \
-                    self.TM[b][self.yrs_op] * self.cpi.loc[yr, "cpi_index"]
+                    self.TM[b][self.yr_i] * self.cpi.loc[yr, "cpi_index"]
                 if "gdp_growth_adjustment" in self.df_clean[b].columns:
                     self.TM[b][yr] = self.TM[b][yr] \
                     * (1.0 + self.gdp_growth.loc[yr].gdp_growth \
                     * self.df_clean[b].gdp_growth_adjustment)
 
+            self.TM[b] = self.TM[b].round(2)
+
         b = "gg"
         # CREATE GREENHOUSE TIME MATRIX
 
 
+    def _compute_travel_time(self):
+        """Compute travel time by section and vehicle type"""
+        # 0th variant
+        tmp = {}
+        for ii in self.secs_0:
+            tmp[ii] = self.R.loc[ii, "length"] / self.V0.loc[ii]
+            
+        self.T0 = pd.concat(tmp.values(), keys=tmp.keys())
+        self.T0.sort_index(inplace=True)
+        self.T0.index.names = self.V0.index.names
+
+        # 1st variant
+        tmp = {}
+        for ii in self.secs_1:
+            tmp[ii] = self.R.loc[ii, "length"] / self.V1.loc[ii]
+        
+        self.T1 = pd.concat(tmp.values(), keys=tmp.keys())
+        self.T1.sort_index(inplace=True)
+        self.T1.index.names = self.V0.index.names
+
+
     def _compute_vtts(self):
-        pass
+        """Mask is given by the intensities, as these are zero
+        in the construction years"""
+        # adjust VTTS unit cost matrix
+        b = "vtts"
+        N_sec_1 = len(self.secs_1)
+        TM0 = pd.DataFrame(repmat(self.TM[b], len(self.secs_0), 1), \
+            columns=self.V0.columns, index=self.V0.index)
+        TM1 = pd.DataFrame(repmat(self.TM[b], len(self.secs_1), 1), \
+            columns=self.V1.columns, index=self.V1.index)
+
+        # benefit matrix
+        self.B0[b] = self.T0 * self.I0 * TM0 * DAYS_YEAR
+#        self.B0[b].fillna(0, inplace=True)
+
+        self.B1[b] = self.T1 * self.I1 * TM1 * DAYS_YEAR
+        
+        self.NB[b] = self.B0[b].sum(0) - self.B1[b].sum(0)
 
 
     def _compute_voc(self):
@@ -362,6 +395,12 @@ class RoadCBA(DataContainer):
 
     def financial_analysis(self):
         """Perform financial analysis"""
+        pass
+
+
+    def _compute_econ_capex(self):
+        """Apply conversion factors to compute
+        CAPEX for the economic analysis."""
         pass
 
 

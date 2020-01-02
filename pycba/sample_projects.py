@@ -11,10 +11,24 @@ def load_sample_bypass():
     d = {}
     d["R"] = pd.read_csv(dirn + "bypass_road_params.csv", index_col=0)
     d["C_inv"] = pd.read_csv(dirn + "bypass_capex_fin.csv", index_col=0)
-    d["I0"] = pd.read_csv(dirn + "bypass_intensities_0.csv", index_col=0)
-    d["I1"] = pd.read_csv(dirn + "bypass_intensities_1.csv", index_col=0)
-    d["V0"] = pd.read_csv(dirn + "bypass_velocities_0.csv", index_col=0)
-    d["V1"] = pd.read_csv(dirn + "bypass_velocities_1.csv", index_col=0)
+
+    d["I0"] = pd.read_csv(dirn + "bypass_intensities_0.csv")
+    d["I1"] = pd.read_csv(dirn + "bypass_intensities_1.csv")
+    d["I0"].set_index(["id_section", "vehicle"], inplace=True)
+    d["I1"].set_index(["id_section", "vehicle"], inplace=True)
+    d["I0"].columns = d["I0"].columns.astype(int)
+    d["I1"].columns = d["I1"].columns.astype(int)
+    d["I0"] = d["I0"].sort_index()
+    d["I1"] = d["I1"].sort_index()
+
+    d["V0"] = pd.read_csv(dirn + "bypass_velocities_0.csv")
+    d["V1"] = pd.read_csv(dirn + "bypass_velocities_1.csv")
+    d["V0"].set_index(["id_section", "vehicle"], inplace=True)
+    d["V1"].set_index(["id_section", "vehicle"], inplace=True)
+    d["V0"].columns = d["V0"].columns.astype(int)
+    d["V1"].columns = d["V1"].columns.astype(int)
+    d["V0"] = d["V0"].sort_index()
+    d["V1"] = d["V1"].sort_index()
     
     return d
 

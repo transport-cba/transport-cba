@@ -47,6 +47,8 @@ class RoadCBA(DataContainer):
         self.country = country
         self.currency = currency
 
+        self.veh_types = VEHICLE_TYPES
+
         # define empty frames
         self.R = None
         self.C_fin = None
@@ -60,7 +62,7 @@ class RoadCBA(DataContainer):
         self.T0 = None
         self.T1 = None
 
-        self.TM = {}
+        self.UC = {}
         self.B0 = {}
         self.B1 = {}
         self.NB = {}
@@ -105,7 +107,7 @@ class RoadCBA(DataContainer):
         self.C_fin = df_capex
         self.I0 = df_int_0
         self.I1 = df_int_1
-        # VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
+        # TODO: VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
 
         # assign core variables
         self._assign_remaining_years()
@@ -120,7 +122,7 @@ class RoadCBA(DataContainer):
                       file_int_1,
                       verbose=False
                       ):
-        # VERIFY EXTENSIONS
+        # TODO: VERIFY EXTENSIONS
         if verbose:
             print("Reading project inputs from csv...")
         self.R = pd.read_csv(file_road_params, index_col=0)
@@ -129,7 +131,7 @@ class RoadCBA(DataContainer):
         self_I0.set_index(["id_section", "vehicle"], inplace=True)
         self.I1 = pd.read_csv(file_int_1).reset_index()
         self.I1.reset_index().set_index(["id_section", "vehicle"], inplace=True)
-        # VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
+        # TODO: VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
 
         # assign core variables
         self._assign_remaining_years()
@@ -138,7 +140,7 @@ class RoadCBA(DataContainer):
 
 
     def read_project_inputs_excel(self, file_xls, verbose=False):
-        # VERIFY EXTENSION
+        # TODO: VERIFY EXTENSION
         if verbose:
             print("Reading project inputs from xls/xlsx...")
         xls = pd.ExcelFile(file_xls)
@@ -148,7 +150,7 @@ class RoadCBA(DataContainer):
         self.I0.set_index(["id_section", "vehicle"], inplace=True)
         self.I1 = xls.parse("intensities_1").reset_index()
         self.I1.set_index(["id_section", "vehicle"], inplace=True)
-        # VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
+        # TODO: VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
 
         # assign core variables
         self._assign_remaining_years()
@@ -216,24 +218,24 @@ class RoadCBA(DataContainer):
 
     def fill_velocities(self):
         """Create the velocity matrices according to pre-defined rules"""
+        # TODO: WRITE THE FILLING FUNCTIONS
         if self.V0 or self.V1:
             print("Warning: velocities already defined, overwriting.")
         self.V0 = pd.DataFrame(columns=self.I0.columns, index=self.I0.index)
         self.V1 = pd.DataFrame(columns=self.I1.columns, index=self.I1.index)
-        # WRITE THE FILLING FUNCTION
 
     
     def compute_opex(self):
         """Create a dataframe of operation costs (OPEX).
         Only new road sections are considered."""
         c = "c_op"
-        self._create_time_opex_mat()  # defined TM[c]
+        self._create_time_opex_mat()  # defined UC[c]
         self._create_time_opex_mask() # defined O_mask
 
         # compute pavement area
         self.R["area"] = self.R.length * 1e3 * self.R.width # CHECK UNITS
         
-        self.UO = self.TM[c] * self.O_mask
+        self.UO = self.UC[c] * self.O_mask
         
         ids_new = self.R[self.R.variant == 1].index.values
         dfs = {}
@@ -262,16 +264,17 @@ class RoadCBA(DataContainer):
             print("Creating time matrix for OPEX...")
         c = "c_op"
 
-        self.TM[c] = \
-            pd.DataFrame(columns=self.yrs_op, index=self.df_clean[c].index)
+        self.UC[c] = \
+            pd.DataFrame(columns=self.yrs, index=self.df_clean[c].index)
 
-        self.TM[c][self.yr_op] = self.df_clean[c].value
+        self.UC[c][self.yr_i] = self.df_clean[c].value
         # FIX ERROR IN CPI INDEXING
-        for yr in self.yrs_op[1:]:
-            self.TM[c][yr] = \
-                self.TM[c][self.yr_op] * self.cpi.loc[yr, "cpi_index"]
+        for yr in self.yrs[1:]:
+            self.UC[c][yr] = \
+                self.UC[c][self.yr_i] * self.cpi.loc[yr, "cpi_index"]
         
-        self.TM[c] = self.TM[c].round(2)
+        self.UC[c] = self.UC[c].round(2)
+        self.UC[c] = self.UC[c][self.yrs_op] # choose operation years
 
 
     def _create_time_opex_mask(self):
@@ -311,25 +314,25 @@ class RoadCBA(DataContainer):
         for b in ["vtts", "voc", "c_acc", "c_em", "noise"]:
             if verbose:
                 print("Creating: %s" % b)
-            self.TM[b] = \
+            self.UC[b] = \
                 pd.DataFrame(columns=self.yrs, index=self.df_clean[b].index)
-            self.TM[b][self.yr_i] = self.df_clean[b].value
+            self.UC[b][self.yr_i] = self.df_clean[b].value
             for yr in self.yrs[1:]:
-                self.TM[b][yr] = \
-                    self.TM[b][self.yr_i] * self.cpi.loc[yr, "cpi_index"]
+                self.UC[b][yr] = \
+                    self.UC[b][self.yr_i] * self.cpi.loc[yr, "cpi_index"]
                 if "gdp_growth_adjustment" in self.df_clean[b].columns:
-                    self.TM[b][yr] = self.TM[b][yr] \
+                    self.UC[b][yr] = self.UC[b][yr] \
                     * (1.0 + self.gdp_growth.loc[yr].gdp_growth \
                     * self.df_clean[b].gdp_growth_adjustment)
 
-            self.TM[b] = self.TM[b].round(2)
+            self.UC[b] = self.UC[b].round(2)
 
         b = "gg"
-        # CREATE GREENHOUSE TIME MATRIX
+        # TODO: CREATE GREENHOUSE TIME MATRIX
 
 
-    def _compute_travel_time(self):
-        """Compute travel time by section and vehicle type"""
+    def _compute_travel_time_matrix(self):
+        """Compute travel time by road section and vehicle type"""
         # 0th variant
         tmp = {}
         for ii in self.secs_0:
@@ -352,25 +355,38 @@ class RoadCBA(DataContainer):
     def _compute_vtts(self):
         """Mask is given by the intensities, as these are zero
         in the construction years"""
-        # adjust VTTS unit cost matrix
         b = "vtts"
-        N_sec_1 = len(self.secs_1)
-        TM0 = pd.DataFrame(repmat(self.TM[b], len(self.secs_0), 1), \
+        # adjust VTTS unit cost matrix
+        # TODO: UNIFY UC0 AND UC1
+        UC0 = pd.DataFrame(repmat(self.UC[b], len(self.secs_0), 1), \
             columns=self.V0.columns, index=self.V0.index)
-        TM1 = pd.DataFrame(repmat(self.TM[b], len(self.secs_1), 1), \
+        UC1 = pd.DataFrame(repmat(self.UC[b], len(self.secs_1), 1), \
             columns=self.V1.columns, index=self.V1.index)
 
-        # benefit matrix
-        self.B0[b] = self.T0 * self.I0 * TM0 * DAYS_YEAR
-#        self.B0[b].fillna(0, inplace=True)
-
-        self.B1[b] = self.T1 * self.I1 * TM1 * DAYS_YEAR
-        
+        # matrix of benefits
+        self.B0[b] = self.T0 * self.I0 * UC0 * DAYS_YEAR
+        self.B1[b] = self.T1 * self.I1 * UC1 * DAYS_YEAR
         self.NB[b] = self.B0[b].sum(0) - self.B1[b].sum(0)
 
 
     def _compute_voc(self):
-        pass
+        b = "voc"
+        # create length matrix
+        L = pd.DataFrame(repmat(self.R.loc[self.secs_1].length, \
+            len(self.yrs), len(self.veh_types)).T,
+            index=self.V1.swaplevel().sort_index().index, \
+            columns=self.V1.columns)
+        L = L.swaplevel().sort_index()
+
+        # create unit cost matrix
+        UC0 = pd.DataFrame(repmat(self.UC[b], len(self.secs_0), 1), \
+            columns=self.V0.columns, index=self.V0.index)
+        UC1 = pd.DataFrame(repmat(self.UC[b], len(self.secs_1), 1), \
+            columns=self.V1.columns, index=self.V1.index)
+
+        self.B0[b] = UC0 * self.I0 * L.loc[self.secs_0] * DAYS_YEAR
+        self.B1[b] = UC1 * self.I1 * L.loc[self.secs_1] * DAYS_YEAR
+        self.NB[b] = self.B1[b].sum(0) - self.B0[b].sum(0)
 
 
     def _compute_fuel(self):

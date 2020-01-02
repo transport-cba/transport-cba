@@ -308,25 +308,6 @@ class DataContainer(object):
         self.df_clean[c].set_index(["vehicle","environment"], inplace=True)
 
 
-#    def create_time_benefit_mat(self, y_start, N_yr, verbose=True):
-#        """Define the time-cost matrices for each benefit"""
-#        yrs = arange(y_start, y_start + N_yr)
-#        for b in ["vtts", "voc", "c_acc", "c_em", "noise"]:
-#            if verbose:
-#                print("Creating: %s" % b)
-#            self.TM[b] = pd.DataFrame(columns=yrs, index=self.df_clean[b].index)
-#            self.TM[b][y_start] = self.df_clean[b].value
-#            for yr in yrs[1:]:
-#                self.TM[b][yr] = self.TM[b][yrs[0]] * self.cpi.loc[yr].cpi_index
-#                if "gdp_growth_adjustment" in self.df_clean[b].columns:
-#                    self.TM[b][yr] = self.TM[b][yr] \
-#                    * (1.0 + self.gdp_growth.loc[yr].gdp_growth \
-#                    * self.df_clean[b].gdp_growth_adjustment)
-#
-#        b = "gg"
-#        # CREATE GREENHOUSE TIME MATRIX
-#
-
 
 
 

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from numpy.matlib import repmat
+from itertools import product
 from .data_container import DataContainer
 
 
@@ -78,6 +79,10 @@ class RoadCBA(DataContainer):
         super().adjust_price_level(verbose=verbose)
         super().wrangle_data(verbose=verbose)
 
+    
+    # =====
+    # Initialisation functions
+    # =====
 
     def _assign_remaining_years(self):
         if self.C_fin is not None:
@@ -229,7 +234,7 @@ class RoadCBA(DataContainer):
         """Create a dataframe of operation costs (OPEX).
         Only new road sections are considered."""
         c = "c_op"
-        self._create_time_opex_mat()  # defined UC[c]
+        self._create_time_opex_matrix()  # defined UC[c]
         self._create_time_opex_mask() # defined O_mask
 
         # compute pavement area
@@ -259,7 +264,11 @@ class RoadCBA(DataContainer):
         self.O_fin.index.set_names(["id_section", "operation_type"], inplace=True)
 
     
-    def _create_time_opex_mat(self, verbose=True):
+    # =====
+    # Computation functions
+    # =====
+
+    def _create_time_opex_matrix(self, verbose=False):
         if verbose:
             print("Creating time matrix for OPEX...")
         c = "c_op"
@@ -268,13 +277,12 @@ class RoadCBA(DataContainer):
             pd.DataFrame(columns=self.yrs, index=self.df_clean[c].index)
 
         self.UC[c][self.yr_i] = self.df_clean[c].value
-        # FIX ERROR IN CPI INDEXING
         for yr in self.yrs[1:]:
             self.UC[c][yr] = \
                 self.UC[c][self.yr_i] * self.cpi.loc[yr, "cpi_index"]
         
         self.UC[c] = self.UC[c].round(2)
-        self.UC[c] = self.UC[c][self.yrs_op] # choose operation years
+        self.UC[c] = self.UC[c][self.yrs_op] # choose years of operation
 
 
     def _create_time_opex_mask(self):
@@ -306,7 +314,7 @@ class RoadCBA(DataContainer):
         pass
 
 
-    def _create_time_benefit_mat(self, verbose=False):
+    def _create_time_benefit_matrix(self, verbose=False):
         """Define the time-cost matrices for each benefit"""
         if verbose:
             print("Creating time matrices for benefits...")
@@ -325,7 +333,10 @@ class RoadCBA(DataContainer):
                     * (1.0 + self.gdp_growth.loc[yr].gdp_growth \
                     * self.df_clean[b].gdp_growth_adjustment)
 
-            self.UC[b] = self.UC[b].round(2)
+            if b == "noise":
+                self.UC[b] = self.UC[b].sort_index().round(5)
+            else:
+                self.UC[b] = self.UC[b].sort_index().round(2)
 
         b = "gg"
         # TODO: CREATE GREENHOUSE TIME MATRIX
@@ -386,7 +397,7 @@ class RoadCBA(DataContainer):
 
         self.B0[b] = UC0 * self.I0 * L.loc[self.secs_0] * DAYS_YEAR
         self.B1[b] = UC1 * self.I1 * L.loc[self.secs_1] * DAYS_YEAR
-        self.NB[b] = self.B1[b].sum(0) - self.B0[b].sum(0)
+        self.NB[b] = self.B0[b].sum(0) - self.B1[b].sum(0)
 
 
     def _compute_fuel(self):
@@ -406,7 +417,40 @@ class RoadCBA(DataContainer):
 
 
     def _compute_noise(self):
-        pass
+        b = "noise"
+
+        # create index
+        pr = [p for p in product(self.secs_1, list(self.UC[b].index))]
+        pr = [(a, b[1], b[0]) for a, b in pr]
+
+        # initialise length matrix
+        L = pd.DataFrame(columns=self.yrs, \
+            index=pd.MultiIndex.from_tuples(pr))
+
+        for ii in self.secs_1:
+            li, env = self.R.loc[ii][["length", "environment"]]
+            for vt in self.veh_types:
+                L.loc[(ii, env, vt)] = li * np.ones_like(self.yrs)
+        L.dropna(inplace=True)
+
+        # create unit cost matrix
+        UC = pd.DataFrame(columns=L.columns, index=L.index)
+
+        for ind, row in L.iterrows():
+            ind2 = np.array(ind)[[2,1]]
+            UC.loc[ind] = self.UC[b].loc[tuple(ind2)]
+            
+        UC = UC.droplevel(1)
+        UC.index.names = ["id_section", "vehicle"]
+
+        L = L.droplevel(1)
+
+        # compute benefits
+        self.B0[b] = \
+            UC.loc[self.secs_0] * self.I0 * L.loc[self.secs_0] * DAYS_YEAR
+        self.B1[b] = \
+            UC.loc[self.secs_1] * self.I1 * L.loc[self.secs_1] * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum(0) - self.B1[b].sum(0)
 
 
     def financial_analysis(self):

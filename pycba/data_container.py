@@ -86,20 +86,6 @@ class DataContainer(object):
         if verbose:
             print("Adjusting CPI...")
 
-#        min_yr = self.cpi.index.min()
-#        max_yr = self.cpi.index.max()
-#        if verbose:
-#            print("Values between years %i and %i" % (min_yr, max_yr))
-#        v_bw = arange(min_yr - N_bw, min_yr)
-#        v_fw = arange(max_yr + 1, max_yr + N_fw + 1)
-#
-#        self.cpi = pd.concat([
-#            pd.DataFrame({"cpi": infl*ones_like(v_bw), "year": v_bw}),
-#            self.cpi.reset_index(),
-#            pd.DataFrame({"cpi": infl*ones_like(v_fw), "year": v_fw}),
-#            ], sort=True)
-#        self.cpi.set_index("year", inplace=True)
-
         self.cpi = self.cpi.reindex(arange(yr_min, yr_max+1))
         self.cpi["cpi"].fillna(infl, inplace=True)
 
@@ -159,6 +145,7 @@ class DataContainer(object):
         self._wrangle_vtts(*args, **kwargs)
         self._wrangle_fuel(*args, **kwargs)
         self._wrangle_accidents(*args, **kwargs)
+        self._wrangle_greenhouse(*args, **kwargs)
         self._wrangle_emissions(*args, **kwargs)
         self._wrangle_noise(*args, **kwargs)
 
@@ -245,13 +232,16 @@ class DataContainer(object):
 
     def _wrangle_fuel(self, verbose=True):
         """Convert units from eur/l to eur/kg"""
+        # convert to kg/km and add conversion factors
         c = "c_fuel"
         self.df_clean[c]["value"] = \
-            self.df_clean[c].value * self.fuel_rho.value
+            self.df_clean[c].value / self.fuel_rho.value
+        self.df_clean[c] *= self.df_clean["conv_fac"].loc["factor", "fuel"]
 
         c = "r_fuel"
-        self.df_clean[c] = pd.merge(self.df_clean[c], 
-            self.fuel_rho.drop(columns=["unit"]), how="left", on="fuel")
+        self.df_clean[c] = pd.merge(self.df_clean[c].reset_index(), 
+            self.fuel_rho.drop(columns=["unit"]), how="left", on="fuel")\
+            .set_index(["vehicle","fuel","ratio"])
         
         # multiply polynomial coefficients by density
         for itm in ["a0", "a1", "a2", "a3"]:
@@ -283,6 +273,15 @@ class DataContainer(object):
         self.df_clean["c_acc"].reset_index(inplace=True)
         self.df_clean["c_acc"].set_index(\
             ["road_type","lanes","label","environment"], inplace=True)
+
+
+    def _wrangle_greenhouse(self, verbose=False):
+        b = "r_gg"
+        self.df_clean[b]["value"] = \
+            self.df_clean[b].value * self.df_clean[b].factor
+
+        gr = self.df_clean[b].groupby(["vehicle", "fuel"])["value"].sum()
+        self.df_clean[b] = pd.DataFrame(gr).round(0)
 
 
     def _wrangle_emissions(self, verbose=False):

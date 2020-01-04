@@ -319,7 +319,7 @@ class RoadCBA(DataContainer):
         if verbose:
             print("Creating time matrices for benefits...")
 
-        for b in ["vtts", "voc", "c_acc", "c_em", "noise"]:
+        for b in ["vtts", "voc", "c_fuel", "c_acc", "c_em", "noise"]:
             if verbose:
                 print("Creating: %s" % b)
             self.UC[b] = \
@@ -400,8 +400,90 @@ class RoadCBA(DataContainer):
         self.NB[b] = self.B0[b].sum(0) - self.B1[b].sum(0)
 
 
-    def _compute_fuel(self):
-        pass
+    def _create_fuel_length_matrix(self):
+        """Define a structure containing section lengths by
+        several indices: section id, vehicle type, fuel type"""
+        self.L = pd.DataFrame(repmat(self.R.length, len(self.yrs), 1).T,
+                 columns=self.yrs, index=self.R.index)
+
+        # add vehicle types
+        ind = pd.DataFrame(index=pd.MultiIndex.from_product(\
+            [self.secs_1, self.veh_types])).reset_index()
+        ind.columns = ["id_section", "vehicle"]
+        self.L = self.L.reset_index().merge(ind, how="left", \
+            on="id_section").set_index(["id_section","vehicle"])
+        
+        # add fuel types
+        ind = self.df_clean["r_fuel"].drop(columns=["ratio"])\
+            .reset_index()[["vehicle", "fuel"]]
+        self.L = self.L.reset_index().merge(ind, how="left", \
+            on="vehicle").set_index(["id_section", "vehicle", "fuel"])
+
+        # define an index
+        self.ind = pd.DataFrame(index=self.L.index).sort_index().reset_index()
+        self.ind.columns = ["id_section", "vehicle", "fuel"]
+
+
+    def _compute_fuel_consumption(self):
+        """Compute the consumption by section, vehicle and fuel type"""
+        # helper functions
+        fuel_coeffs = self.df_clean["r_fuel"].drop(columns=["ratio"])
+        
+        def vel2cons(c, v):
+            """Convert velocity in km/h to fuel consumption in
+            kg/km via a polynomial"""
+            return np.polyval(c[::-1], v)
+        
+        # create length matrix
+        ind = self.df_clean["r_fuel"].drop(columns=["ratio"]).index
+        
+        tmp = {}
+        for ii in self.secs_1:
+            tmp[ii] = pd.DataFrame(self.R.loc[ii, "length"],\
+                columns=self.yrs, index=ind)
+            
+        L = pd.concat(tmp.values(), keys=tmp.keys())
+        L.index.names = ["id_section","vehicle","fuel"]
+
+        # quantity of fuel, 0th variant
+        self.QF0 = pd.DataFrame(columns=self.yrs, index=L.loc[self.secs_0].index)
+        for ind, _ in self.QF0.iterrows():
+            ids, veh, f = ind
+            self.QF0.loc[(ids,veh,f)] = self.V0.loc[(ids, veh)]\
+                .map(lambda v: vel2cons(fuel_coeffs.loc[(veh, f)], v)) *\
+                L.loc[ind]
+
+        # quantity of fuel in 1st variant
+        self.QF1 = pd.DataFrame(columns=self.yrs, index=L.loc[self.secs_1].index)
+        for ind, _ in self.QF1.iterrows():
+            ids, veh, f = ind
+            self.QF1.loc[(ids,veh,f)] = self.V1.loc[(ids, veh)]\
+                .map(lambda v: vel2cons(fuel_coeffs.loc[(veh, f)], v)) *\
+                L.loc[ind]
+
+
+    def _compute_fuel_cost(self):
+        b = "fuel"
+        # unit cost matrix
+        UC = self.UC["c_fuel"].reset_index().merge(self.ind, \
+            how="left", on="fuel")\
+            .set_index(["id_section", "vehicle", "fuel"]).sort_index()
+
+        UC = UC.reindex(self.L.index).sort_index()
+        
+        # fuel ratio matrix
+        rfuel = self.ind.merge(self.df_clean["r_fuel"].ratio, how="left", \
+            on=["vehicle", "fuel"]).set_index(\
+            ["id_section", "vehicle", "fuel"]).dropna().sort_index()
+
+        rfuel = pd.DataFrame(repmat(rfuel, 1, len(self.yrs)), \
+            columns=self.yrs, index=rfuel.index)
+
+        self.B0[b] = UC.loc[self.secs_0] * self.QF0 * self.I0 * \
+            DAYS_YEAR * rfuel.loc[self.secs_0]
+        self.B1[b] = UC.loc[self.secs_1] * self.QF1 * self.I1 * \
+            DAYS_YEAR * rfuel.loc[self.secs_1]
+        self.NB[b] = self.B0[b].sum(0) - self.B1[b].sum(0)
 
 
     def _compute_accidents(self):

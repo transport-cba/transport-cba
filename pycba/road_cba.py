@@ -7,7 +7,7 @@ from .data_container import DataContainer
 
 VEHICLE_TYPES = ["car", "lgv", "hgv", "bus"]
 ENVIRONMENTS = ["intravilan", "extravilan"]
-DAYS_YEAR = 365
+DAYS_YEAR = 365.0
 
 
 class RoadCBA(DataContainer):
@@ -53,22 +53,25 @@ class RoadCBA(DataContainer):
         self.envs = ENVIRONMENTS
 
         # define empty frames
-        self.R = None
+        self.R = None       # road parameters
         self.C_fin = None
         self.C_eco = None
         self.O_fin = None
         self.O_eco = None
-        self.I0 = None
-        self.I1 = None
+
         self.V0 = None
         self.V1 = None
+        self.L = None
         self.T0 = None
         self.T1 = None
+        self.I0 = None
+        self.I1 = None
 
-        self.UC = {}
-        self.B0 = {}
-        self.B1 = {}
-        self.NB = {}
+        self.UC = {}        # unit costs
+        self.B0 = {}        # benefits in 0th variant
+        self.B1 = {}        # benefits in 1st variant
+        self.NB = {}        # net benefits
+        self.NC = {}        # net costs
 
         super().__init__(self.country, self.yr_i)
 
@@ -85,7 +88,6 @@ class RoadCBA(DataContainer):
     # =====
     # Initialisation functions
     # =====
-
     def _assign_remaining_years(self):
         if self.C_fin is not None:
             self.yr_op = int(self.C_fin.columns[-1]) + 1
@@ -236,8 +238,8 @@ class RoadCBA(DataContainer):
         """Create a dataframe of operation costs (OPEX).
         Only new road sections are considered."""
         c = "c_op"
-        self._create_time_opex_matrix()  # defined UC[c]
-        self._create_time_opex_mask() # defined O_mask
+        self._create_unit_cost_opex_matrix()  # defined UC[c]
+        self._create_unit_cost_opex_mask() # defined O_mask
 
         # compute pavement area
         self.R["area"] = self.R.length * 1e3 * self.R.width # CHECK UNITS
@@ -263,14 +265,15 @@ class RoadCBA(DataContainer):
                 self.R.loc[rid, "area"]
 
         self.O_fin = pd.concat(dfs.values(), keys=dfs.keys())
-        self.O_fin.index.set_names(["id_section", "operation_type"], inplace=True)
+        self.O_fin.index.names = ["id_section", "operation_type"]
+#        self.O_fin.index.set_names(["id_section", "operation_type"], inplace=True)
 
     
     # =====
     # Preparation functions
     # =====
 
-    def _create_time_opex_matrix(self, verbose=False):
+    def _create_unit_cost_opex_matrix(self, verbose=False):
         if verbose:
             print("Creating time matrix for OPEX...")
         c = "c_op"
@@ -287,7 +290,7 @@ class RoadCBA(DataContainer):
         self.UC[c] = self.UC[c][self.yrs_op] # choose years of operation
 
 
-    def _create_time_opex_mask(self):
+    def _create_unit_cost_opex_mask(self):
         """Compose a time matrix of zeros and ones indicating if the
         maintanance has to be performed in a given year."""
         c = "c_op"
@@ -316,8 +319,8 @@ class RoadCBA(DataContainer):
         pass
 
 
-    def _create_time_benefit_matrix(self, verbose=False):
-        """Define the time-cost matrices for each benefit"""
+    def _create_unit_cost_matrix(self, verbose=False):
+        """Define the unit cost matrices for each benefit"""
         if verbose:
             print("Creating time matrices for benefits...")
 
@@ -340,11 +343,11 @@ class RoadCBA(DataContainer):
             else:
                 self.UC[b] = self.UC[b].sort_index().round(2)
 
-#        b = "gg"
-#        self.UC[b] = \
-#            pd.DataFrame(columns=self.yrs, index=self.df_clean[b].index)
-#        gdp_growth = self.df_clean.loc[self.yr_i, "c_gg"]
-#        # TODO: CREATE GREENHOUSE TIME MATRIX
+        b = "c_gg"
+        self.UC[b] = \
+            pd.DataFrame(self.df_clean[b].loc[self.yr_i:self.yr_f, "value"])
+        self.UC[b].columns = ["co2eq"] 
+        self.UC[b] = self.UC[b].T
 
     
     def _create_length_matrix(self):
@@ -358,6 +361,12 @@ class RoadCBA(DataContainer):
         """Compute travel time by road section and vehicle type"""
         self.T0 = self.L * 1.0 / self.V0
         self.T1 = self.L * 1.0 / self.V1
+
+
+    def _create_fuel_ratio_matrix(self):
+        rfuel = self.df_clean["r_fuel"].ratio.sort_index()
+        self.RF = pd.DataFrame(repmat(rfuel, self.N_yr, 1).T, \
+            columns=self.yrs, index=rfuel.index)
 
 
     # =====
@@ -425,13 +434,6 @@ class RoadCBA(DataContainer):
                 L.loc[ind]
 
 
-    def _create_fuel_ratio_matrix(self):
-        # matrix of fuel ratios
-        rfuel = self.df_clean["r_fuel"].ratio.sort_index()
-        self.RF = pd.DataFrame(repmat(rfuel, self.N_yr, 1).T, \
-            columns=self.yrs, index=rfuel.index)
-
-
     def _compute_fuel_cost(self):
         b = "fuel"
         
@@ -443,20 +445,44 @@ class RoadCBA(DataContainer):
 
 
     def _compute_accidents(self):
-        pass
-    
+        b = "acc"
+        scale = 1e-8
+        L = self.L.merge(self.R[["lanes","environment","category","label"]], \
+            how="left", on="id_section").reset_index()\
+            .set_index(["id_section","lanes","environment","category","label"])
+        L = L.reorder_levels([0,3,1,4,2])
+
+        UCA = (L * self.UC["c_acc"] * scale)\
+            .droplevel(["label","lanes","category","environment"])\
+            .dropna(subset=[self.yr_i]).sort_index()
+
+        self.B0[b] = UCA * self.I0 * DAYS_YEAR
+        self.B1[b] = UCA * self.I1 * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
 
     def _compute_greenhouse(self):
-        pass
+        b = "gg"
+        scale = 1e-6
+
+        # UCG: unit cost of greenhouse gases in EUR/kg(fuel)
+        UCG = pd.DataFrame(\
+            np.outer(self.df_clean["r_gg"].values, self.UC["c_gg"].values),\
+            index=self.df_clean["r_gg"].index, columns=self.yrs) * scale
+        
+        self.B0[b] = (UCG * self.RF) * (self.QF0 * self.I0) * DAYS_YEAR
+        self.B1[b] = (UCG * self.RF) * (self.QF1 * self.I1) * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
     def _compute_emissions(self):
         b = "em"
+        scale = 1e-6
         RE = pd.DataFrame(repmat(self.df_clean["r_em"].value, self.N_yr, 1).T, 
                   columns=self.yrs, index=self.df_clean["r_em"].index)
 
-        # compute unit cost in EUR/kg(fuel)
-        UCE = RE * self.UC["c_em"] / 1e6
+        # UCE: unit cost of emissions in EUR/kg(fuel)
+        UCE = RE * self.UC["c_em"] * scale
         UCE = UCE.groupby(["fuel","vehicle","environment"]).sum()
         UCE = UCE.reset_index()\
             .set_index(["environment","vehicle","fuel"]).sort_index()
@@ -475,27 +501,32 @@ class RoadCBA(DataContainer):
 
     def _compute_noise(self):
         b = "noise"
+        scale = 1e-3
         L = self.L.reset_index().merge(self.R.environment.reset_index())
         L = L.set_index(["id_section", "environment"])
         
-        tmp = (self.UC[b] * L)
-        tmp = tmp.reset_index()
-        tmp = tmp.set_index(["id_section","environment","vehicle"])
-        tmp = tmp.sort_index()
+        # CN: cost of noise in EUR
+        CN = (self.UC[b] * L) * scale
+        CN = CN.reset_index()
+        CN = CN.set_index(["id_section", "environment", "vehicle"])
+        CN = CN.sort_index()
 
-        self.B0[b] = tmp.loc[self.secs_0] * self.I0 * DAYS_YEAR
-        self.B1[b] = tmp.loc[self.secs_1] * self.I1 * DAYS_YEAR
+        self.B0[b] = CN.loc[self.secs_0] * self.I0 * DAYS_YEAR
+        self.B1[b] = CN.loc[self.secs_1] * self.I1 * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
-
-
-    def financial_analysis(self):
-        """Perform financial analysis"""
-        pass
 
 
     def _compute_econ_capex(self):
         """Apply conversion factors to compute
         CAPEX for the economic analysis."""
+        pass
+
+
+    # =====
+    # Financial analysis
+    # =====
+    def financial_analysis(self):
+        """Perform financial analysis"""
         pass
 
 

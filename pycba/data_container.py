@@ -241,7 +241,7 @@ class DataContainer(object):
         c = "r_fuel"
         self.df_clean[c] = pd.merge(self.df_clean[c].reset_index(), 
             self.fuel_rho.drop(columns=["unit"]), how="left", on="fuel")\
-            .set_index(["vehicle","fuel","ratio"])
+            .set_index(["vehicle","fuel"])
         
         # multiply polynomial coefficients by density
         for itm in ["a0", "a1", "a2", "a3"]:
@@ -286,8 +286,16 @@ class DataContainer(object):
 
     def _wrangle_emissions(self, verbose=False):
         b = "c_em"
-        self.df_clean[b].reset_index()\
-            .set_index(["polluant","environment"], inplace=True)
+        self.df_clean[b].reset_index(inplace=True)
+        self.df_clean[b].set_index(["polluant", "environment"], \
+            inplace=True)
+        self.df_clean[b] = self.df_clean[b].sort_index()
+
+        b = "r_em"
+        self.df_clean[b].reset_index(inplace=True)
+        self.df_clean[b].set_index(["polluant", "vehicle", "fuel"], \
+            inplace=True)
+        self.df_clean[b] = self.df_clean[b].sort_index()
 
 
     def _wrangle_noise(self, verbose=False):

@@ -118,11 +118,12 @@ class DataContainer(object):
             if "unit" in self.df_clean[itm].columns:
                 self.df_clean[itm].drop(columns=["unit"], inplace=True)
         
-        for c in ["c_op", "vtts", "voc", "c_acc", "c_gg", "c_em", "noise"]:
-            if "scale" in self.df_clean[c].columns:
-                 self.df_clean[c]["value"] =\
-                    self.df_clean[c].value * self.df_clean[c].scale
-                 self.df_clean[c].drop(columns=["scale"], inplace=True)
+#        # adjusting scale if supplied
+#        for c in ["c_op", "vtts", "voc", "c_acc", "c_gg", "c_em", "noise"]:
+#            if "scale" in self.df_clean[c].columns:
+#                 self.df_clean[c]["value"] =\
+#                    self.df_clean[c].value * self.df_clean[c].scale
+#                 self.df_clean[c].drop(columns=["scale"], inplace=True)
 
 
     def adjust_price_level(self, verbose=False):
@@ -272,7 +273,7 @@ class DataContainer(object):
 
         self.df_clean["c_acc"].reset_index(inplace=True)
         self.df_clean["c_acc"].set_index(\
-            ["road_type","lanes","label","environment"], inplace=True)
+            ["category","lanes","label","environment"], inplace=True)
 
 
     def _wrangle_greenhouse(self, verbose=False):
@@ -299,23 +300,22 @@ class DataContainer(object):
 
 
     def _wrangle_noise(self, verbose=False):
-        c = "noise"
-        self.df_clean[c] = self.df_clean[c]\
-            [self.df_clean[c].traffic_type == "thin"]
-        self.df_clean[c].drop(columns=["traffic_type"], inplace=True)
+        b = "noise"
+        self.df_clean[b] = self.df_clean[b]\
+            [self.df_clean[b].traffic_type == "thin"]
+        self.df_clean[b].drop(columns=["traffic_type"], inplace=True)
+        if verbose:
+            print(self.df_clean[b])
 
-        self.df_clean[c]["value2"] = self.df_clean[c].value\
-            * self.df_clean[c].ratio
-        gr = self.df_clean[c]\
+        self.df_clean[b]["value2"] = self.df_clean[b].value\
+            * self.df_clean[b].ratio
+        gr = self.df_clean[b]\
             .groupby(["vehicle","environment","gdp_growth_adjustment"])
 
-        self.df_clean[c] = gr["value2"].sum()
-        self.df_clean[c] = self.df_clean[c].reset_index()
-        self.df_clean[c].rename(columns={"value2": "value"}, inplace=True)
-        self.df_clean[c].set_index(["vehicle","environment"], inplace=True)
-
-
-
+        self.df_clean[b] = gr["value2"].sum()
+        self.df_clean[b] = self.df_clean[b].reset_index()
+        self.df_clean[b].rename(columns={"value2": "value"}, inplace=True)
+        self.df_clean[b].set_index(["vehicle","environment"], inplace=True)
 
 
 

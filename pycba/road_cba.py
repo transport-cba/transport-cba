@@ -6,6 +6,7 @@ from .data_container import DataContainer
 
 
 VEHICLE_TYPES = ["car", "lgv", "hgv", "bus"]
+ENVIRONMENTS = ["intravilan", "extravilan"]
 DAYS_YEAR = 365
 
 
@@ -49,6 +50,7 @@ class RoadCBA(DataContainer):
         self.currency = currency
 
         self.veh_types = VEHICLE_TYPES
+        self.envs = ENVIRONMENTS
 
         # define empty frames
         self.R = None
@@ -265,7 +267,7 @@ class RoadCBA(DataContainer):
 
     
     # =====
-    # Computation functions
+    # Preparation functions
     # =====
 
     def _create_time_opex_matrix(self, verbose=False):
@@ -333,117 +335,78 @@ class RoadCBA(DataContainer):
                     * (1.0 + self.gdp_growth.loc[yr].gdp_growth \
                     * self.df_clean[b].gdp_growth_adjustment)
 
-            if b == "noise":
+            if b in ["noise"]:
                 self.UC[b] = self.UC[b].sort_index().round(5)
             else:
                 self.UC[b] = self.UC[b].sort_index().round(2)
 
-        b = "gg"
-        # TODO: CREATE GREENHOUSE TIME MATRIX
+#        b = "gg"
+#        self.UC[b] = \
+#            pd.DataFrame(columns=self.yrs, index=self.df_clean[b].index)
+#        gdp_growth = self.df_clean.loc[self.yr_i, "c_gg"]
+#        # TODO: CREATE GREENHOUSE TIME MATRIX
+
+    
+    def _create_length_matrix(self):
+        """Create the matrix of lengs with years as columns"""
+        self.L = pd.DataFrame(\
+            np.outer(self.R.length, np.ones_like(self.yrs)), \
+            columns=self.yrs, index=self.R.index)
 
 
     def _compute_travel_time_matrix(self):
         """Compute travel time by road section and vehicle type"""
-        # 0th variant
-        tmp = {}
-        for ii in self.secs_0:
-            tmp[ii] = self.R.loc[ii, "length"] / self.V0.loc[ii]
-            
-        self.T0 = pd.concat(tmp.values(), keys=tmp.keys())
-        self.T0.sort_index(inplace=True)
-        self.T0.index.names = self.V0.index.names
+        self.T0 = self.L * 1.0 / self.V0
+        self.T1 = self.L * 1.0 / self.V1
 
-        # 1st variant
-        tmp = {}
-        for ii in self.secs_1:
-            tmp[ii] = self.R.loc[ii, "length"] / self.V1.loc[ii]
-        
-        self.T1 = pd.concat(tmp.values(), keys=tmp.keys())
-        self.T1.sort_index(inplace=True)
-        self.T1.index.names = self.V0.index.names
 
+    # =====
+    # Functions to compute economic benefits
+    # =====
 
     def _compute_vtts(self):
         """Mask is given by the intensities, as these are zero
         in the construction years"""
         b = "vtts"
-        # adjust VTTS unit cost matrix
-        # TODO: UNIFY UC0 AND UC1
-        UC0 = pd.DataFrame(repmat(self.UC[b], len(self.secs_0), 1), \
-            columns=self.V0.columns, index=self.V0.index)
-        UC1 = pd.DataFrame(repmat(self.UC[b], len(self.secs_1), 1), \
-            columns=self.V1.columns, index=self.V1.index)
-
-        # matrix of benefits
-        self.B0[b] = self.T0 * self.I0 * UC0 * DAYS_YEAR
-        self.B1[b] = self.T1 * self.I1 * UC1 * DAYS_YEAR
-        self.NB[b] = self.B0[b].sum(0) - self.B1[b].sum(0)
+        self.B0[b] = self.UC[b] * self.T0 * self.I0 * DAYS_YEAR
+        self.B1[b] = self.UC[b] * self.T1 * self.I1 * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
     def _compute_voc(self):
         b = "voc"
-        # create length matrix
-        L = pd.DataFrame(repmat(self.R.loc[self.secs_1].length, \
-            len(self.yrs), len(self.veh_types)).T,
-            index=self.V1.swaplevel().sort_index().index, \
-            columns=self.V1.columns)
-        L = L.swaplevel().sort_index()
-
-        # create unit cost matrix
-        UC0 = pd.DataFrame(repmat(self.UC[b], len(self.secs_0), 1), \
-            columns=self.V0.columns, index=self.V0.index)
-        UC1 = pd.DataFrame(repmat(self.UC[b], len(self.secs_1), 1), \
-            columns=self.V1.columns, index=self.V1.index)
-
-        self.B0[b] = UC0 * self.I0 * L.loc[self.secs_0] * DAYS_YEAR
-        self.B1[b] = UC1 * self.I1 * L.loc[self.secs_1] * DAYS_YEAR
-        self.NB[b] = self.B0[b].sum(0) - self.B1[b].sum(0)
-
-
-    def _create_fuel_length_matrix(self):
-        """Define a structure containing section lengths by
-        several indices: section id, vehicle type, fuel type"""
-        self.L = pd.DataFrame(repmat(self.R.length, len(self.yrs), 1).T,
-                 columns=self.yrs, index=self.R.index)
-
-        # add vehicle types
-        ind = pd.DataFrame(index=pd.MultiIndex.from_product(\
-            [self.secs_1, self.veh_types])).reset_index()
-        ind.columns = ["id_section", "vehicle"]
-        self.L = self.L.reset_index().merge(ind, how="left", \
-            on="id_section").set_index(["id_section","vehicle"])
-        
-        # add fuel types
-        ind = self.df_clean["r_fuel"].drop(columns=["ratio"])\
-            .reset_index()[["vehicle", "fuel"]]
-        self.L = self.L.reset_index().merge(ind, how="left", \
-            on="vehicle").set_index(["id_section", "vehicle", "fuel"])
-
-        # define an index
-        self.ind = pd.DataFrame(index=self.L.index).sort_index().reset_index()
-        self.ind.columns = ["id_section", "vehicle", "fuel"]
+        dum = pd.DataFrame(1, index=pd.MultiIndex.from_product(\
+            [self.L.index, self.UC[b].index]), columns=self.yrs)
+        dum.index.names = ["id_section","vehicle"]
+        self.L * dum
+        self.B0[b] = ((self.UC[b] * dum) * self.L).loc[self.secs_0] * \
+            self.I0 * DAYS_YEAR
+        self.B1[b] = ((self.UC[b] * dum) * self.L).loc[self.secs_1] * \
+            self.I1 * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
     def _compute_fuel_consumption(self):
         """Compute the consumption by section, vehicle and fuel type"""
-        # helper functions
+        # polynomial coefficients and consumption function
         fuel_coeffs = self.df_clean["r_fuel"].drop(columns=["ratio"])
         
         def vel2cons(c, v):
             """Convert velocity in km/h to fuel consumption in
             kg/km via a polynomial"""
             return np.polyval(c[::-1], v)
+
+        # length matrix with appropriate division of fuel/vehicle types
+        dum = pd.DataFrame(1, index=pd.MultiIndex.from_product(\
+            [self.secs_1, self.veh_types]), columns=self.yrs)
+        dum.index.names = ["id_section", "vehicle"]
+        L = self.L * dum
         
-        # create length matrix
-        ind = self.df_clean["r_fuel"].drop(columns=["ratio"]).index
-        
-        tmp = {}
-        for ii in self.secs_1:
-            tmp[ii] = pd.DataFrame(self.R.loc[ii, "length"],\
-                columns=self.yrs, index=ind)
-            
-        L = pd.concat(tmp.values(), keys=tmp.keys())
-        L.index.names = ["id_section","vehicle","fuel"]
+        ind = self.df_clean["r_fuel"].reset_index()[["vehicle", "fuel"]]
+        L = L.reset_index().merge(ind, how="left", on="vehicle")\
+            .set_index(["id_section", "vehicle", "fuel"])
+        L = L.sort_index()
+#        self.L_fuel = L
 
         # quantity of fuel, 0th variant
         self.QF0 = pd.DataFrame(columns=self.yrs, index=L.loc[self.secs_0].index)
@@ -464,26 +427,15 @@ class RoadCBA(DataContainer):
 
     def _compute_fuel_cost(self):
         b = "fuel"
-        # unit cost matrix
-        UC = self.UC["c_fuel"].reset_index().merge(self.ind, \
-            how="left", on="fuel")\
-            .set_index(["id_section", "vehicle", "fuel"]).sort_index()
-
-        UC = UC.reindex(self.L.index).sort_index()
-        
-        # fuel ratio matrix
-        rfuel = self.ind.merge(self.df_clean["r_fuel"].ratio, how="left", \
-            on=["vehicle", "fuel"]).set_index(\
-            ["id_section", "vehicle", "fuel"]).dropna().sort_index()
-
-        rfuel = pd.DataFrame(repmat(rfuel, 1, len(self.yrs)), \
+        rfuel = self.df_clean["r_fuel"].ratio.sort_index()
+        rfuel = pd.DataFrame(repmat(rfuel, self.N_yr, 1).T, \
             columns=self.yrs, index=rfuel.index)
-
-        self.B0[b] = UC.loc[self.secs_0] * self.QF0 * self.I0 * \
-            DAYS_YEAR * rfuel.loc[self.secs_0]
-        self.B1[b] = UC.loc[self.secs_1] * self.QF1 * self.I1 * \
-            DAYS_YEAR * rfuel.loc[self.secs_1]
-        self.NB[b] = self.B0[b].sum(0) - self.B1[b].sum(0)
+        
+        self.B0[b] = \
+            (self.UC["c_fuel"] * rfuel) * (self.QF0 * self.I0) * DAYS_YEAR
+        self.B1[b] = \
+            (self.UC["c_fuel"] * rfuel) * (self.QF1 * self.I1) * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
     def _compute_accidents(self):
@@ -494,45 +446,23 @@ class RoadCBA(DataContainer):
         pass
 
 
-    def _compute_exhalates(self):
+    def _compute_emissions(self):
         pass
 
 
     def _compute_noise(self):
         b = "noise"
+        L = self.L.reset_index().merge(self.R.environment.reset_index())
+        L = L.set_index(["id_section", "environment"])
+        
+        tmp = (self.UC[b] * L)
+        tmp = tmp.reset_index()
+        tmp = tmp.set_index(["id_section","environment","vehicle"])
+        tmp = tmp.sort_index()
 
-        # create index
-        pr = [p for p in product(self.secs_1, list(self.UC[b].index))]
-        pr = [(a, b[1], b[0]) for a, b in pr]
-
-        # initialise length matrix
-        L = pd.DataFrame(columns=self.yrs, \
-            index=pd.MultiIndex.from_tuples(pr))
-
-        for ii in self.secs_1:
-            li, env = self.R.loc[ii][["length", "environment"]]
-            for vt in self.veh_types:
-                L.loc[(ii, env, vt)] = li * np.ones_like(self.yrs)
-        L.dropna(inplace=True)
-
-        # create unit cost matrix
-        UC = pd.DataFrame(columns=L.columns, index=L.index)
-
-        for ind, row in L.iterrows():
-            ind2 = np.array(ind)[[2,1]]
-            UC.loc[ind] = self.UC[b].loc[tuple(ind2)]
-            
-        UC = UC.droplevel(1)
-        UC.index.names = ["id_section", "vehicle"]
-
-        L = L.droplevel(1)
-
-        # compute benefits
-        self.B0[b] = \
-            UC.loc[self.secs_0] * self.I0 * L.loc[self.secs_0] * DAYS_YEAR
-        self.B1[b] = \
-            UC.loc[self.secs_1] * self.I1 * L.loc[self.secs_1] * DAYS_YEAR
-        self.NB[b] = self.B0[b].sum(0) - self.B1[b].sum(0)
+        self.B0[b] = tmp.loc[self.secs_0] * self.I0 * DAYS_YEAR
+        self.B1[b] = tmp.loc[self.secs_1] * self.I1 * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
     def financial_analysis(self):

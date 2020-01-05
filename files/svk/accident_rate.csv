@@ -1,4 +1,4 @@
-road_type,lanes,label,environment,unit,scale,fatal,severe_injury,light_injury,damage,nb
+category,lanes,label,environment,unit,scale,fatal,severe_injury,light_injury,damage,nb
 motorway,4,,extravilan,acc/vehkm,1e-08,0.407,1.131,3.604,32.765,
 motorway,4,,intravilan,acc/vehkm,1e-08,0.287,3.526,11.232,20.903,
 motorway,2,,extravilan,acc/vehkm,1e-08,1.386,4.345,13.842,24.723,like standard

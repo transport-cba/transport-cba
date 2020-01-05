@@ -425,16 +425,20 @@ class RoadCBA(DataContainer):
                 L.loc[ind]
 
 
+    def _create_fuel_ratio_matrix(self):
+        # matrix of fuel ratios
+        rfuel = self.df_clean["r_fuel"].ratio.sort_index()
+        self.RF = pd.DataFrame(repmat(rfuel, self.N_yr, 1).T, \
+            columns=self.yrs, index=rfuel.index)
+
+
     def _compute_fuel_cost(self):
         b = "fuel"
-        rfuel = self.df_clean["r_fuel"].ratio.sort_index()
-        rfuel = pd.DataFrame(repmat(rfuel, self.N_yr, 1).T, \
-            columns=self.yrs, index=rfuel.index)
         
         self.B0[b] = \
-            (self.UC["c_fuel"] * rfuel) * (self.QF0 * self.I0) * DAYS_YEAR
+            (self.UC["c_fuel"] * self.RF) * (self.QF0 * self.I0) * DAYS_YEAR
         self.B1[b] = \
-            (self.UC["c_fuel"] * rfuel) * (self.QF1 * self.I1) * DAYS_YEAR
+            (self.UC["c_fuel"] * self.RF) * (self.QF1 * self.I1) * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
@@ -447,7 +451,26 @@ class RoadCBA(DataContainer):
 
 
     def _compute_emissions(self):
-        pass
+        b = "em"
+        RE = pd.DataFrame(repmat(self.df_clean["r_em"].value, self.N_yr, 1).T, 
+                  columns=self.yrs, index=self.df_clean["r_em"].index)
+
+        # compute unit cost in EUR/kg(fuel)
+        UCE = RE * self.UC["c_em"] / 1e6
+        UCE = UCE.groupby(["fuel","vehicle","environment"]).sum()
+        UCE = UCE.reset_index()\
+            .set_index(["environment","vehicle","fuel"]).sort_index()
+
+        # add section ID
+        UCE = UCE.reset_index().merge(self.R.environment.reset_index(), \
+            how="left", on="environment").set_index(\
+            ["id_section","environment","vehicle","fuel"]).sort_index()
+
+        self.B0[b] = (UCE * self.RF).reorder_levels([3, 2, 0, 1]).sort_index() \
+            * (self.QF0 * self.I0) * DAYS_YEAR
+        self.B1[b] = (UCE * self.RF).reorder_levels([3, 2, 0, 1]).sort_index() \
+            * (self.QF1 * self.I1) * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
     def _compute_noise(self):

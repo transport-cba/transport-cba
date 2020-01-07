@@ -230,6 +230,7 @@ class RoadCBA(DataContainer):
         CAPEX for the economic analysis."""
         # reindex columns
         self.C_fin = pd.DataFrame(self.C_fin, columns=self.yrs).fillna(0)
+        self.C_fin_tot = pd.DataFrame(self.C_fin.sum(1), columns=["value"])
 
         # apply conversion factors to get econ CAPEX
         cf = self.C_fin.copy()\
@@ -238,16 +239,45 @@ class RoadCBA(DataContainer):
             .fillna(self.df_clean["conv_fac"]\
             .loc["construction", "aggregate"])["aggregate"]
         self.C_eco = self.C_fin.multiply(cf, axis=0)
+        self.C_eco_tot = pd.DataFrame(self.C_eco.sum(1), columns=["value"])
 
         self.NC["capex"] = -self.C_eco.sum()
+
+
+    def compute_residual_value(self):
+        """Create a dataframe of residual values by each element"""
+        RV = self.df_clean["res_val"].copy()
+        RV.replacement_cost_ratio.fillna(1.0, inplace=True)
+        RV["op_period"] = self.N_yr_op
+        RV["replace"] = \
+            np.where(RV.lifetime <= RV.op_period, 1, 0)
+        RV["rem_ratio"] = \
+            np.where(RV.lifetime <= RV.op_period,\
+            (2*RV.lifetime - RV.op_period) / RV.lifetime,\
+            (RV.lifetime - RV.op_period) / RV.lifetime).round(2)
+        RV.rem_ratio.fillna(1.0, inplace=True) # fill land
+
+        # financial
+        self.RV_fin = RV.merge(self.C_fin_tot, how="left", on="item")
+        self.RV_fin["res_value"] = np.where(self.RV_fin.replace == 0,\
+            self.RV_fin.value * self.RV_fin.rem_ratio,\
+            self.RV_fin.value * self.RV_fin.rem_ratio * \
+                self.RV_fin.replacement_cost_ratio)
+
+        # economic
+        self.RV_eco = RV.merge(self.C_eco_tot, how="left", on="item")
+        self.RV_eco["res_value"] = np.where(self.RV_eco.replace == 0,\
+            self.RV_eco.value * self.RV_eco.rem_ratio,\
+            self.RV_eco.value * self.RV_eco.rem_ratio * \
+                self.RV_eco.replacement_cost_ratio)
 
 
     def compute_opex(self):
         """Create a dataframe of operation costs (OPEX).
         Only new road sections are considered."""
         c = "c_op"
-        self._create_unit_cost_opex_matrix()  # defined UC[c]
-        self._create_unit_cost_opex_mask() # defined O_mask
+        self._create_unit_cost_opex_matrix()  # define UC[c]
+        self._create_unit_cost_opex_mask() # define O_mask
 
         # compute pavement area
         self.R["area"] = self.R.length * 1e3 * self.R.width # CHECK UNITS
@@ -275,13 +305,6 @@ class RoadCBA(DataContainer):
         self.O_fin = pd.concat(dfs.values(), keys=dfs.keys())
         self.O_fin.index.names = ["id_section", "operation_type"]
 #        self.O_fin.index.set_names(["id_section", "operation_type"], inplace=True)
-
-
-    def compute_residual_value(self):
-        """Create a dataframe of residual values by each element"""
-        rv_cols = ["lifetime", "need_for_change", "res_value"]
-        self.RV = pd.DataFrame(columns=rv_cols, index=self.C_inv.index)
-        pass
 
 
     # =====
@@ -321,11 +344,6 @@ class RoadCBA(DataContainer):
                     if (i+1) % p == 0:
                         v[i] = 1
                 self.O_mask.loc[itm] = v
-
-
-    def economic_analysis(self):
-        """Perform economic analysis"""
-        pass
 
 
     def _create_unit_cost_matrix(self, verbose=False):
@@ -381,6 +399,11 @@ class RoadCBA(DataContainer):
     # =====
     # Functions to compute economic benefits
     # =====
+    def economic_analysis(self):
+        """Perform economic analysis"""
+        pass
+
+
     def _compute_vtts(self):
         """Mask is given by the intensities, as these are zero
         in the construction years"""
@@ -423,7 +446,6 @@ class RoadCBA(DataContainer):
         L = L.reset_index().merge(ind, how="left", on="vehicle")\
             .set_index(["id_section", "vehicle", "fuel"])
         L = L.sort_index()
-#        self.L_fuel = L
 
         # quantity of fuel, 0th variant
         self.QF0 = pd.DataFrame(columns=self.yrs, index=L.loc[self.secs_0].index)
@@ -529,7 +551,7 @@ class RoadCBA(DataContainer):
     # =====
     def financial_analysis(self):
         """Perform financial analysis"""
-        pass
+        raise NotImplementedError()
 
 
 

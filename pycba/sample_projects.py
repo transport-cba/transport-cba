@@ -11,6 +11,7 @@ def load_sample_bypass():
     d = {}
     d["R"] = pd.read_csv(dirn + "bypass_road_params.csv", index_col=0)
     d["C_inv"] = pd.read_csv(dirn + "bypass_capex_fin.csv", index_col=0)
+    d["C_inv"].columns = d["C_inv"].columns.astype(int)
 
     d["I0"] = pd.read_csv(dirn + "bypass_intensities_0.csv")
     d["I1"] = pd.read_csv(dirn + "bypass_intensities_1.csv")

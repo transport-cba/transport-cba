@@ -91,7 +91,7 @@ class RoadCBA(DataContainer):
     def _assign_remaining_years(self):
         if self.C_fin is not None:
             self.yr_op = int(self.C_fin.columns[-1]) + 1
-            self.N_yr_bld = len(self.C_fin.columns) - 1 # 1st col is total capex
+            self.N_yr_bld = len(self.C_fin.columns)
             self.N_yr_op = self.N_yr - self.N_yr_bld
             self.yrs_op = \
                 np.arange(self.yr_i + self.N_yr_bld, self.yr_i + self.N_yr)
@@ -183,22 +183,14 @@ class RoadCBA(DataContainer):
         pass
 
 
-    def read_velocities(self,
-                        df_vel_0,
-                        df_vel_1,
-                        verbose=False
-                        ):
+    def read_velocities(self, df_vel_0, df_vel_1, verbose=False):
         if verbose:
             print("Loading velocitiies...")
         self.V0 = df_vel_0
         self.V1 = df_vel_1
 
 
-    def read_velocities_csv(self,
-                            csv_vel_0, 
-                            csv_vel_1,
-                            verbose=False
-                            ):
+    def read_velocities_csv(self, csv_vel_0, csv_vel_1, verbose=False):
         """Read the dataframe of velocities ordered by project section
         and vehicle category"""
         if csv_vel_0[-3:] != "csv" or csv_vel_1[-3:] != "csv":
@@ -227,13 +219,29 @@ class RoadCBA(DataContainer):
 
     def fill_velocities(self):
         """Create the velocity matrices according to pre-defined rules"""
-        # TODO: WRITE THE FILLING FUNCTIONS
-        if self.V0 or self.V1:
-            print("Warning: velocities already defined, overwriting.")
-        self.V0 = pd.DataFrame(columns=self.I0.columns, index=self.I0.index)
-        self.V1 = pd.DataFrame(columns=self.I1.columns, index=self.I1.index)
+        raise NotImplementedError()
 
-    
+
+    # =====
+    # Computing CAPEX, OPEX and residual value
+    # =====
+    def compute_capex(self):
+        """Apply conversion factors to compute
+        CAPEX for the economic analysis."""
+        # reindex columns
+        self.C_fin = pd.DataFrame(self.C_fin, columns=self.yrs).fillna(0)
+
+        # apply conversion factors to get econ CAPEX
+        cf = self.C_fin.copy()\
+            .merge(self.df_clean["conv_fac"][["aggregate"]], \
+            how="left", on="item")\
+            .fillna(self.df_clean["conv_fac"]\
+            .loc["construction", "aggregate"])["aggregate"]
+        self.C_eco = self.C_fin.multiply(cf, axis=0)
+
+        self.NC["capex"] = -self.C_eco.sum()
+
+
     def compute_opex(self):
         """Create a dataframe of operation costs (OPEX).
         Only new road sections are considered."""
@@ -268,11 +276,17 @@ class RoadCBA(DataContainer):
         self.O_fin.index.names = ["id_section", "operation_type"]
 #        self.O_fin.index.set_names(["id_section", "operation_type"], inplace=True)
 
-    
+
+    def compute_residual_value(self):
+        """Create a dataframe of residual values by each element"""
+        rv_cols = ["lifetime", "need_for_change", "res_value"]
+        self.RV = pd.DataFrame(columns=rv_cols, index=self.C_inv.index)
+        pass
+
+
     # =====
     # Preparation functions
     # =====
-
     def _create_unit_cost_opex_matrix(self, verbose=False):
         if verbose:
             print("Creating time matrix for OPEX...")
@@ -307,11 +321,6 @@ class RoadCBA(DataContainer):
                     if (i+1) % p == 0:
                         v[i] = 1
                 self.O_mask.loc[itm] = v
-
-
-    def compute_residual_value(self):
-        """Create a dataframe of residual values by each element"""
-        pass
 
 
     def economic_analysis(self):
@@ -372,7 +381,6 @@ class RoadCBA(DataContainer):
     # =====
     # Functions to compute economic benefits
     # =====
-
     def _compute_vtts(self):
         """Mask is given by the intensities, as these are zero
         in the construction years"""
@@ -514,12 +522,6 @@ class RoadCBA(DataContainer):
         self.B0[b] = CN.loc[self.secs_0] * self.I0 * DAYS_YEAR
         self.B1[b] = CN.loc[self.secs_1] * self.I1 * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
-
-
-    def _compute_econ_capex(self):
-        """Apply conversion factors to compute
-        CAPEX for the economic analysis."""
-        pass
 
 
     # =====

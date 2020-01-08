@@ -111,7 +111,7 @@ class RoadCBA(DataContainer):
         * intensities in 1st variant
         """
         if verbose:
-            print("Reading project inputs...")
+            print("Reading project inputs from df...")
         self.R = df_road_params
         self.C_fin = df_capex
         self.I0 = df_int_0
@@ -120,17 +120,23 @@ class RoadCBA(DataContainer):
 
         # assign core variables
         self._assign_remaining_years()
-        self.secs_0 = self.R[self.R.variant == 0].index
-        self.secs_1 = self.R.index
+        self.secs_0 = self.R[self.R.variant_0 == 1].index
+        self.secs_1 = self.R[self.R.variant_1 == 1].index
+        self.secs_old = \
+            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 1)].index
+        self.secs_repl = \
+            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 0)].index
+        self.secs_new = \
+            self.R[(self.R.variant_0 == 0) & (self.R.variant_1 == 1)].index
 
     
     def read_project_inputs_csv(self,
-                      file_road_params,
-                      file_capex,
-                      file_int_0,
-                      file_int_1,
-                      verbose=False
-                      ):
+                                file_road_params,
+                                file_capex,
+                                file_int_0,
+                                file_int_1,
+                                verbose=False
+                                ):
         # TODO: VERIFY EXTENSIONS
         if verbose:
             print("Reading project inputs from csv...")
@@ -139,13 +145,20 @@ class RoadCBA(DataContainer):
         self.I0 = pd.read_csv(file_int_0).reset_index()
         self_I0.set_index(["id_section", "vehicle"], inplace=True)
         self.I1 = pd.read_csv(file_int_1).reset_index()
-        self.I1.reset_index().set_index(["id_section", "vehicle"], inplace=True)
+        self.I1.reset_index(inplace=True)
+        self.I1.set_index(["id_section", "vehicle"], inplace=True)
         # TODO: VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
 
         # assign core variables
         self._assign_remaining_years()
-        self.secs_0 = self.R[self.R.variant == 0].index
-        self.secs_1 = self.R.index
+        self.secs_0 = self.R[self.R.variant_0 == 1].index
+        self.secs_1 = self.R[self.R.variant_1 == 1].index
+        self.secs_old = \
+            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 1)].index
+        self.secs_repl = \
+            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 0)].index
+        self.secs_new = \
+            self.R[(self.R.variant_0 == 0) & (self.R.variant_1 == 1)].index
 
 
     def read_project_inputs_excel(self, file_xls, verbose=False):
@@ -163,12 +176,21 @@ class RoadCBA(DataContainer):
 
         # assign core variables
         self._assign_remaining_years()
-        self.secs_0 = self.R[self.R.variant == 0].index
-        self.secs_1 = self.R.index
+        self.secs_0 = self.R[self.R.variant_0 == 1].index
+        self.secs_1 = self.R[self.R.variant_1 == 1].index
+        self.secs_old = \
+            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 1)].index
+        self.secs_repl = \
+            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 0)].index
+        self.secs_new = \
+            self.R[(self.R.variant_0 == 0) & (self.R.variant_1 == 1)].index
 
 
     def read_intensities(self, df_int_0, df_int_1):
-        pass
+        if verbose:
+            print("Loading intensities from df...")
+        self.I0 = df_int_0
+        self.I1 = df_int_1
 
 
     def read_intensities_csv(self, csv_int_0, csv_int_1):
@@ -185,7 +207,7 @@ class RoadCBA(DataContainer):
 
     def read_velocities(self, df_vel_0, df_vel_1, verbose=False):
         if verbose:
-            print("Loading velocitiies...")
+            print("Loading velocities from df...")
         self.V0 = df_vel_0
         self.V1 = df_vel_1
 
@@ -241,7 +263,7 @@ class RoadCBA(DataContainer):
         self.C_eco = self.C_fin.multiply(cf, axis=0)
         self.C_eco_tot = pd.DataFrame(self.C_eco.sum(1), columns=["value"])
 
-        self.NC["capex"] = -self.C_eco.sum()
+        self.NC["capex"] = self.C_eco.sum()
 
 
     def compute_residual_value(self):
@@ -271,40 +293,117 @@ class RoadCBA(DataContainer):
             self.RV_eco.value * self.RV_eco.rem_ratio * \
                 self.RV_eco.replacement_cost_ratio)
 
+        self.NB["res_val"] = pd.Series(\
+            np.array([0] * (self.N_yr-1) + [1]) * self.RV_eco.res_value.sum(),\
+            index=self.yrs)
+
 
     def compute_opex(self):
-        """Create a dataframe of operation costs (OPEX).
-        Only new road sections are considered."""
-        c = "c_op"
+        """Create a dataframe of operation costs (OPEX)."""
         self._create_unit_cost_opex_matrix()  # define UC[c]
-        self._create_unit_cost_opex_mask() # define O_mask
+        self._create_unit_cost_opex_mask()
 
-        # compute pavement area
-        self.R["area"] = self.R.length * 1e3 * self.R.width # CHECK UNITS
+        UC = self.UC["c_op"].copy()
+
+        # create area matrix
+        def define_area(x):
+            return x if x in ["tunnels", "bridges"] else "pavements"
+
+        UC = UC.reset_index(["item"])
+        UC["area_type"] = UC.item.map(lambda x: define_area(x))
+        UC = UC.reset_index().set_index(["category", "operation_type", \
+            "area_type", "item"]).sort_index()
         
-        self.UO = self.UC[c] * self.O_mask
+        # variant 0
+        RA0 = self.R.loc[self.secs_0, ["category", "length", \
+            "length_bridges", "length_tunnels", "width"]].copy()
+        RA0["pavements"] = RA0.width * RA0.length * 1e3
+        RA0["bridges"] = RA0.width * RA0.length_bridges * 1e3
+        RA0["tunnels"] = RA0.width * RA0.length_tunnels * 1e3
+        RA0 = RA0.drop(\
+            columns=["length", "length_bridges", "length_tunnels", "width"])
+        RA0 = RA0.reset_index().melt(id_vars=["id_section", "category"], \
+            var_name="area_type", value_name="value")
+        RA0 = RA0.groupby(["id_section", "category", "area_type"])\
+            [["value"]].sum()
         
-        ids_new = self.R[self.R.variant == 1].index.values
-        dfs = {}
-        for rid in ids_new:
-            dfs[rid] = \
-                pd.DataFrame(columns=self.yrs_op, index=["routine", "periodic"])
-            dfs[rid].index.name = "operation_type"
-            rcat = self.R.loc[rid, "category"]
-            tmp = self.UO.reset_index(["operation_type", "category"])
-            tmp = tmp[tmp.category == rcat]
+        # time matrix of areas
+        RA0 = pd.DataFrame(np.outer(RA0.value, np.ones_like(self.yrs)), \
+            index=RA0.index, columns=self.yrs)
+        
+        self.O0_fin = (RA0 * (UC * self.mask0)).dropna().droplevel(\
+            ["category", "area_type"]).reorder_levels([0, 2, 1]).sort_index()
+        
+        # variant 1
+        O1_old = self.O0_fin.loc[self.secs_old]
+        O1_repl = self.O0_fin.loc[self.secs_repl]
+        if not O1_repl.empty:
+            O1_repl[self.yrs_op] = 0.0
+        
+        RA1 = self.R.loc[self.secs_new, ["category","length",\
+            "length_bridges","length_tunnels","width"]].copy()
+        RA1["pavements"] = RA1.width * RA1.length * 1e3
+        RA1["bridges"] = RA1.width * RA1.length_bridges * 1e3
+        RA1["tunnels"] = RA1.width * RA1.length_tunnels * 1e3
+        RA1 = RA1.drop(columns=["length", "length_bridges", \
+            "length_tunnels", "width"])
+        RA1 = RA1.reset_index().melt(id_vars=["id_section", "category"], \
+            var_name="area_type", value_name="value")
+        RA1 = RA1.groupby(["id_section", "category", "area_type"])\
+            [["value"]].sum()
+        
+        # time matrix of areas
+        RA1 = pd.DataFrame(np.outer(RA1.value, np.ones_like(self.yrs)), \
+            index=RA1.index, columns=self.yrs)
+        
+        O1_new = (RA1 * (UC * self.mask1)).dropna().droplevel(\
+            ["category", "area_type"]).reorder_levels([0, 2, 1]).sort_index()
+        self.O1_fin = pd.concat([O1_old, O1_repl, O1_new]).sort_index()
+        
+        # economic values
+        c = "conv_fac"
+        cf = self.df_clean[c]\
+            .loc[self.df_clean[c].expense_type == "operation", "aggregate"]
+        cf.index.name = "operation_type"
+        cf = pd.DataFrame(np.outer(cf, np.ones_like(self.yrs)), \
+            columns=self.yrs, index=cf.index)
+        
+        self.O0_eco = self.O0_fin * cf
+        self.O1_eco = self.O1_fin * cf
+        self.NC["opex"] = self.O1_eco.sum() - self.O0_eco.sum()
 
-            dfs[rid].loc["routine"] = tmp[tmp.operation_type == "routine"]\
-                .drop(columns=["operation_type", "category"]).sum(axis=0) *\
-                self.R.loc[rid, "area"]
 
-            dfs[rid].loc["periodic"] = tmp[tmp.operation_type == "periodic"]\
-                .drop(columns=["operation_type", "category"]).sum(axis=0) *\
-                self.R.loc[rid, "area"]
-
-        self.O_fin = pd.concat(dfs.values(), keys=dfs.keys())
-        self.O_fin.index.names = ["id_section", "operation_type"]
-#        self.O_fin.index.set_names(["id_section", "operation_type"], inplace=True)
+#    def compute_opex(self):
+#        """Create a dataframe of operation costs (OPEX).
+#        Only new road sections are considered."""
+#        c = "c_op"
+#        self._create_unit_cost_opex_matrix()  # define UC[c]
+#        self._create_unit_cost_opex_mask() # define O_mask
+#
+#        # compute pavement area
+#        self.R["area"] = self.R.length * 1e3 * self.R.width
+#        
+#        self.UO = self.UC[c] * self.O_mask
+#        
+#        dfs = {}
+#        for rid in self.secs_new:
+#            dfs[rid] = \
+#                pd.DataFrame(columns=self.yrs_op, index=["routine", "periodic"])
+#            dfs[rid].index.name = "operation_type"
+#            rcat = self.R.loc[rid, "category"]
+#            tmp = self.UO.reset_index(["operation_type", "category"])
+#            tmp = tmp[tmp.category == rcat]
+#
+#            dfs[rid].loc["routine"] = tmp[tmp.operation_type == "routine"]\
+#                .drop(columns=["operation_type", "category"]).sum(axis=0) *\
+#                self.R.loc[rid, "area"]
+#
+#            dfs[rid].loc["periodic"] = tmp[tmp.operation_type == "periodic"]\
+#                .drop(columns=["operation_type", "category"]).sum(axis=0) *\
+#                self.R.loc[rid, "area"]
+#
+#        self.O_fin = pd.concat(dfs.values(), keys=dfs.keys())
+#        self.O_fin.index.names = ["id_section", "operation_type"]
 
 
     # =====
@@ -321,29 +420,68 @@ class RoadCBA(DataContainer):
         self.UC[c][self.yr_i] = self.df_clean[c].value
         for yr in self.yrs[1:]:
             self.UC[c][yr] = \
-                self.UC[c][self.yr_i] * self.cpi.loc[yr, "cpi_index"]
+                self.UC[c][self.yr_i]# * self.cpi.loc[yr, "cpi_index"]
         
         self.UC[c] = self.UC[c].round(2)
-        self.UC[c] = self.UC[c][self.yrs_op] # choose years of operation
+#        self.UC[c] = self.UC[c][self.yrs_op] # choose years of operation
 
 
     def _create_unit_cost_opex_mask(self):
         """Compose a time matrix of zeros and ones indicating if the
         maintanance has to be performed in a given year."""
-        c = "c_op"
-        self.O_mask = \
-            pd.DataFrame(0, index=self.df_clean[c].index, columns=self.yrs_op)
-        
-        for itm in self.O_mask.index:
-            p = self.df_clean[c].loc[itm, "periodicity"].astype(int)
+        mask0 = pd.DataFrame(0, \
+            index=self.df_clean["c_op"].index, columns=self.yrs)
+
+        for itm in mask0.index:
+            p = self.df_clean["c_op"].loc[itm, "periodicity"].astype(int)
             if p == 1:
-                self.O_mask.loc[itm] = 1
+                mask0.loc[itm] = 1
             else:
-                v = np.zeros_like(self.yrs_op).astype(int)
+                v = np.zeros(mask0.shape[1]).astype(int)
                 for i, _ in enumerate(v):
                     if (i+1) % p == 0:
                         v[i] = 1
-                self.O_mask.loc[itm] = v
+                mask0.loc[itm] = v
+        
+        self.mask0 = mask0.reorder_levels(\
+            ["category", "operation_type", "item"]).sort_index()
+        
+        mask1 = pd.DataFrame(0, \
+            index=self.df_clean["c_op"].index, columns=self.yrs_op)
+        
+        for itm in mask1.index:
+            p = self.df_clean["c_op"].loc[itm, "periodicity"].astype(int)
+            if p == 1:
+                mask1.loc[itm] = 1
+            else:
+                v = np.zeros(mask1.shape[1]).astype(int)
+                for i, _ in enumerate(v):
+                    if (i+1) % p == 0:
+                        v[i] = 1
+                mask1.loc[itm] = v
+        
+        mask1 = pd.DataFrame(mask1, columns=self.yrs).fillna(0).astype(int)
+        self.mask1 = mask1.reorder_levels(\
+            ["category", "operation_type", "item"]).sort_index()
+        
+
+#    def _create_unit_cost_opex_mask(self):
+#        """Compose a time matrix of zeros and ones indicating if the
+#        maintanance has to be performed in a given year."""
+#        c = "c_op"
+#        self.O_mask = \
+#            pd.DataFrame(0, index=self.df_clean[c].index, columns=self.yrs_op)
+#        
+#        for itm in self.O_mask.index:
+#            p = self.df_clean[c].loc[itm, "periodicity"].astype(int)
+#            if p == 1:
+#                self.O_mask.loc[itm] = 1
+#            else:
+#                v = np.zeros_like(self.yrs_op).astype(int)
+#                for i, _ in enumerate(v):
+#                    if (i+1) % p == 0:
+#                        v[i] = 1
+#                self.O_mask.loc[itm] = v
 
 
     def _create_unit_cost_matrix(self, verbose=False):
@@ -359,7 +497,7 @@ class RoadCBA(DataContainer):
             self.UC[b][self.yr_i] = self.df_clean[b].value
             for yr in self.yrs[1:]:
                 self.UC[b][yr] = \
-                    self.UC[b][self.yr_i] * self.cpi.loc[yr, "cpi_index"]
+                    self.UC[b][self.yr_i]# * self.cpi.loc[yr, "cpi_index"]
                 if "gdp_growth_adjustment" in self.df_clean[b].columns:
                     self.UC[b][yr] = self.UC[b][yr] \
                     * (1.0 + self.gdp_growth.loc[yr].gdp_growth \

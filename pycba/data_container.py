@@ -29,7 +29,7 @@ class DataContainer(object):
     def read_data(self, verbose=False):
         """Read in all the relevant data"""
         if verbose:
-            print("Reading CBA data...")
+            print("Reading CBA parameters...")
 
         # macro data
         self.gdp_growth = pd.read_csv(self.dirn + "gdp_growth.csv", \
@@ -109,6 +109,8 @@ class DataContainer(object):
 
     def clean_data(self, verbose=False):
         """Remove unimportant columns and populate the df_clean dictionary"""
+        if verbose:
+            print("Cleaning parameters...")
         for itm in self.df_raw.keys():
             if verbose:
                 print("Cleaning: %s" % itm)
@@ -142,6 +144,8 @@ class DataContainer(object):
 
 
     def wrangle_data(self, *args, **kwargs):
+        if "verbose" in kwargs.keys() and kwargs["verbose"]:
+            print("Wrangling parameters...")
         self._wrangle_opex(*args, **kwargs)
         self._wrangle_vtts(*args, **kwargs)
         self._wrangle_fuel(*args, **kwargs)
@@ -178,8 +182,8 @@ class DataContainer(object):
     def _wrangle_vtts(self, verbose=False):
         """Average the value of the travel time saved"""
         if "distance" in self.df_clean["vtts"].columns:
-            if verbose:
-                print("Contracting distance.")
+#            if verbose:
+#                print("Averaging VTTS over distance.")
             gr = self.df_clean["vtts"]\
                 .groupby(by=["vehicle","substance","purpose",\
                 "gdp_growth_adjustment"])
@@ -304,8 +308,8 @@ class DataContainer(object):
         self.df_clean[b] = self.df_clean[b]\
             [self.df_clean[b].traffic_type == "thin"]
         self.df_clean[b].drop(columns=["traffic_type"], inplace=True)
-        if verbose:
-            print(self.df_clean[b])
+#        if verbose:
+#            print(self.df_clean[b])
 
         self.df_clean[b]["value2"] = self.df_clean[b].value\
             * self.df_clean[b].ratio

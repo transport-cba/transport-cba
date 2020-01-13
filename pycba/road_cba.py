@@ -56,8 +56,10 @@ class RoadCBA(DataContainer):
         self.R = None       # road parameters
         self.C_fin = None
         self.C_eco = None
-        self.O_fin = None
-        self.O_eco = None
+        self.O0_fin = None
+        self.O0_eco = None
+        self.O1_fin = None
+        self.O1_eco = None
 
         self.V0 = None
         self.V1 = None
@@ -406,6 +408,10 @@ class RoadCBA(DataContainer):
 #        self.O_fin.index.names = ["id_section", "operation_type"]
 
 
+    def _compute_toll(self):
+        pass
+
+
     # =====
     # Preparation functions
     # =====
@@ -429,6 +435,7 @@ class RoadCBA(DataContainer):
     def _create_unit_cost_opex_mask(self):
         """Compose a time matrix of zeros and ones indicating if the
         maintanance has to be performed in a given year."""
+        # variant 0
         mask0 = pd.DataFrame(0, \
             index=self.df_clean["c_op"].index, columns=self.yrs)
 
@@ -446,6 +453,7 @@ class RoadCBA(DataContainer):
         self.mask0 = mask0.reorder_levels(\
             ["category", "operation_type", "item"]).sort_index()
         
+        # variant 1
         mask1 = pd.DataFrame(0, \
             index=self.df_clean["c_op"].index, columns=self.yrs_op)
         
@@ -463,25 +471,6 @@ class RoadCBA(DataContainer):
         mask1 = pd.DataFrame(mask1, columns=self.yrs).fillna(0).astype(int)
         self.mask1 = mask1.reorder_levels(\
             ["category", "operation_type", "item"]).sort_index()
-        
-
-#    def _create_unit_cost_opex_mask(self):
-#        """Compose a time matrix of zeros and ones indicating if the
-#        maintanance has to be performed in a given year."""
-#        c = "c_op"
-#        self.O_mask = \
-#            pd.DataFrame(0, index=self.df_clean[c].index, columns=self.yrs_op)
-#        
-#        for itm in self.O_mask.index:
-#            p = self.df_clean[c].loc[itm, "periodicity"].astype(int)
-#            if p == 1:
-#                self.O_mask.loc[itm] = 1
-#            else:
-#                v = np.zeros_like(self.yrs_op).astype(int)
-#                for i, _ in enumerate(v):
-#                    if (i+1) % p == 0:
-#                        v[i] = 1
-#                self.O_mask.loc[itm] = v
 
 
     def _create_unit_cost_matrix(self, verbose=False):
@@ -534,12 +523,51 @@ class RoadCBA(DataContainer):
             columns=self.yrs, index=rfuel.index)
 
 
+    def compute_costs_benefits(self):
+        """Compute financial and economic costs"""
+        # costs
+        self.compute_capex()
+        self.compute_opex()
+
+        # benefits
+        self.compute_residual_value()
+
+        self._create_length_matrix()
+        self._compute_travel_time_matrix()
+        
+        self._create_unit_cost_matrix()
+        self._compute_vtts()
+        self._compute_voc()
+        self._create_fuel_ratio_matrix()
+        self._compute_fuel_consumption()
+        self._compute_fuel_cost()
+        self._compute_greenhouse()
+        self._compute_emissions()
+        self._compute_noise()
+        self._compute_accidents()
+
+
     # =====
     # Functions to compute economic benefits
     # =====
     def economic_analysis(self):
         """Perform economic analysis"""
-        pass
+        self.df_eco = pd.DataFrame(self.NB).T
+        self.df_eco = pd.concat(\
+            [-pd.DataFrame(self.NC).T, pd.DataFrame(self.NB).T],\
+                   keys=["cost", "benefit"], names=["type", "item"])\
+                   .round(2)
+
+        self.df_enpv = self.df_eco\
+            .apply(lambda x: np.npv(self.r_eco, x), axis=1).round(2)
+        self.ENPV = np.npv(self.r_eco, self.df_eco.sum())
+        self.EIRR = np.irr(self.df_eco.sum())
+        self.EBCR = \
+            self.df_enpv.loc["benefit"].sum() / self.df_enpv.loc["cost"].sum()
+
+        print("ENPV: %.3f M" % (self.ENPV / 1e6))
+        print("EIRR: %.3f %%" % (self.EIRR*100))
+        print("BCR : %.3f" % self.EBCR)
 
 
     def _compute_vtts(self):
@@ -555,7 +583,7 @@ class RoadCBA(DataContainer):
         b = "voc"
         dum = pd.DataFrame(1, index=pd.MultiIndex.from_product(\
             [self.L.index, self.UC[b].index]), columns=self.yrs)
-        dum.index.names = ["id_section","vehicle"]
+        dum.index.names = ["id_section", "vehicle"]
         self.L * dum
         self.B0[b] = ((self.UC[b] * dum) * self.L).loc[self.secs_0] * \
             self.I0 * DAYS_YEAR
@@ -567,7 +595,6 @@ class RoadCBA(DataContainer):
     def _compute_fuel_consumption(self):
         """Compute the consumption by section, vehicle and fuel type"""
         # polynomial coefficients and consumption function
-        fuel_coeffs = self.df_clean["r_fuel"].drop(columns=["ratio"])
         
         def vel2cons(c, v):
             """Convert velocity in km/h to fuel consumption in
@@ -589,22 +616,21 @@ class RoadCBA(DataContainer):
         self.QF0 = pd.DataFrame(columns=self.yrs, index=L.loc[self.secs_0].index)
         for ind, _ in self.QF0.iterrows():
             ids, veh, f = ind
-            self.QF0.loc[(ids,veh,f)] = self.V0.loc[(ids, veh)]\
-                .map(lambda v: vel2cons(fuel_coeffs.loc[(veh, f)], v)) *\
-                L.loc[ind]
+            self.QF0.loc[(ids, veh, f)] = self.V0.loc[(ids, veh)]\
+                .map(lambda v: vel2cons(\
+                self.df_clean["fuel_coeffs"].loc[(veh, f)], v)) * L.loc[ind]
 
         # quantity of fuel in 1st variant
         self.QF1 = pd.DataFrame(columns=self.yrs, index=L.loc[self.secs_1].index)
         for ind, _ in self.QF1.iterrows():
             ids, veh, f = ind
-            self.QF1.loc[(ids,veh,f)] = self.V1.loc[(ids, veh)]\
-                .map(lambda v: vel2cons(fuel_coeffs.loc[(veh, f)], v)) *\
-                L.loc[ind]
+            self.QF1.loc[(ids, veh, f)] = self.V1.loc[(ids, veh)]\
+                .map(lambda v: vel2cons(\
+                self.df_clean["fuel_coeffs"].loc[(veh, f)], v)) * L.loc[ind]
 
 
     def _compute_fuel_cost(self):
         b = "fuel"
-        
         self.B0[b] = \
             (self.UC["c_fuel"] * self.RF) * (self.QF0 * self.I0) * DAYS_YEAR
         self.B1[b] = \
@@ -615,10 +641,11 @@ class RoadCBA(DataContainer):
     def _compute_accidents(self):
         b = "acc"
         scale = 1e-8
-        L = self.L.merge(self.R[["lanes","environment","category","label"]], \
+        L = self.L.merge(\
+            self.R[["lanes", "environment", "category", "label"]], \
             how="left", on="id_section").reset_index()\
-            .set_index(["id_section","lanes","environment","category","label"])
-        L = L.reorder_levels([0,3,1,4,2])
+            .set_index(["id_section", "lanes", "environment", "category", \
+            "label"]).reorder_levels([0, 3, 1, 4, 2])
 
         UCA = (L * self.UC["c_acc"] * scale)\
             .droplevel(["label","lanes","category","environment"])\
@@ -674,13 +701,11 @@ class RoadCBA(DataContainer):
         L = L.set_index(["id_section", "environment"])
         
         # CN: cost of noise in EUR
-        CN = (self.UC[b] * L) * scale
-        CN = CN.reset_index()
-        CN = CN.set_index(["id_section", "environment", "vehicle"])
-        CN = CN.sort_index()
+        CN = (self.UC[b] * L * scale).reorder_levels(\
+            ["id_section", "environment", "vehicle"]).sort_index()
 
-        self.B0[b] = CN.loc[self.secs_0] * self.I0 * DAYS_YEAR
-        self.B1[b] = CN.loc[self.secs_1] * self.I1 * DAYS_YEAR
+        self.B0[b] = CN * self.I0 * DAYS_YEAR
+        self.B1[b] = CN * self.I1 * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 

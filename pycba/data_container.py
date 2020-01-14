@@ -39,6 +39,8 @@ class DataContainer(object):
         # financial data
         self.df_raw["c_op"] = \
             pd.read_csv(self.dirn + "operation_cost.csv", index_col=0)
+        self.df_raw["toll_op"] = \
+            pd.read_csv(self.dirn + "toll_operation_cost.csv", index_col=0)
         self.df_raw["res_val"] = \
             pd.read_csv(self.dirn + "residual_value.csv", index_col=0)
         self.df_raw["c_fuel"] =\
@@ -61,8 +63,10 @@ class DataContainer(object):
             pd.read_csv(self.dirn + "vtts.csv", index_col=0)
         self.df_raw["voc"] =\
             pd.read_csv(self.dirn + "voc.csv", index_col=0)
-        self.df_raw["r_fuel"] =\
+        self.df_raw["fuel_coeffs"] =\
             pd.read_csv(self.dirn + "fuel_consumption.csv", index_col=0)
+        self.df_raw["r_fuel"] =\
+            pd.read_csv(self.dirn + "fuel_ratio.csv", index_col=0)
         self.df_raw["r_acc"] =\
             pd.read_csv(self.dirn + "accident_rate.csv", index_col=0)
         self.df_raw["c_acc"] =\
@@ -132,15 +136,15 @@ class DataContainer(object):
         """Unify the prices for one price level"""
         if verbose:
             print("Adjusting price level...")
-        for c in ["c_op", "vtts", "voc", "c_fuel", "c_acc", "c_gg", "c_em",\
-            "noise"]:
+        for c in ["c_op", "toll_op", \
+            "vtts", "voc", "c_fuel", "c_acc", "c_gg", "c_em", "noise"]:
             if verbose:
                 print("Adjusting: %s" % c)
             self.df_clean[c]["value"] = self.df_clean[c].value \
                 * self.df_clean[c].price_level\
                 .map(lambda x: self.cpi.loc[x].cpi_index)
             self.df_clean[c].drop(columns=["price_level"], inplace=True)
-            self.df_clean[c]["value"] = self.df_clean[c].value.round(2)
+            self.df_clean[c]["value"] = self.df_clean[c].value.round(3)
 
 
     def wrangle_data(self, *args, **kwargs):
@@ -162,28 +166,12 @@ class DataContainer(object):
         self.df_clean[c].set_index(\
             ["item","operation_type","category"], inplace=True)
 
-#        """Set index and add conversion factors"""
-#        c = "c_op"
-#        self.df_clean[c]["conv_fac"] = where(
-#            self.df_clean[c].operation_type == "periodic", 
-#            self.df_clean["conv_fac"].loc["periodic"]["aggregate"],
-#            self.df_clean["conv_fac"].loc["routine"]["aggregate"])
-#        self.df_clean[c]["value_eco"] = \
-#            (self.df_clean[c].value * self.df_clean[c].conv_fac).round(2)
-#
-#        self.df_clean[c].rename(columns={"value": "value_fin"}, inplace=True)
-#        
-#        self.df_clean[c].reset_index(inplace=True)
-#        self.df_clean[c].set_index(\
-#            ["item","operation_type","category"], inplace=True)
-#        self.df_clean[c].drop(columns="conv_fac", inplace=True)
-
 
     def _wrangle_vtts(self, verbose=False):
         """Average the value of the travel time saved"""
         if "distance" in self.df_clean["vtts"].columns:
-#            if verbose:
-#                print("Averaging VTTS over distance.")
+            if verbose:
+                print("Averaging VTTS over distance.")
             gr = self.df_clean["vtts"]\
                 .groupby(by=["vehicle","substance","purpose",\
                 "gdp_growth_adjustment"])
@@ -237,13 +225,18 @@ class DataContainer(object):
 
     def _wrangle_fuel(self, verbose=True):
         """Convert units from eur/l to eur/kg"""
+        # fuel ratios for vehicle types
+        c = "r_fuel"
+        self.df_clean[c].reset_index(inplace=True)
+        self.df_clean[c].set_index(["vehicle", "fuel"], inplace=True)
+
         # convert to kg/km and add conversion factors
         c = "c_fuel"
         self.df_clean[c]["value"] = \
             self.df_clean[c].value / self.fuel_rho.value
         self.df_clean[c] *= self.df_clean["conv_fac"].loc["factor", "fuel"]
 
-        c = "r_fuel"
+        c = "fuel_coeffs"
         self.df_clean[c] = pd.merge(self.df_clean[c].reset_index(), 
             self.fuel_rho.drop(columns=["unit"]), how="left", on="fuel")\
             .set_index(["vehicle","fuel"])
@@ -308,9 +301,6 @@ class DataContainer(object):
         self.df_clean[b] = self.df_clean[b]\
             [self.df_clean[b].traffic_type == "thin"]
         self.df_clean[b].drop(columns=["traffic_type"], inplace=True)
-#        if verbose:
-#            print(self.df_clean[b])
-
         self.df_clean[b]["value2"] = self.df_clean[b].value\
             * self.df_clean[b].ratio
         gr = self.df_clean[b]\

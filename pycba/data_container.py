@@ -1,5 +1,6 @@
 import pandas as pd
 from numpy import arange, ones_like, where
+import os
 
 
 available_countries = ["svk"]
@@ -13,7 +14,7 @@ class DataContainer(object):
             raise ValueError("Data for country '%s' not available." % country)
         
         self.country = country
-        self.dirn = "../files/%s/" % self.country
+        self.dirn = os.path.dirname(__file__) + "/../files/%s/" % self.country
         self.pl = price_level
         
         self.df_raw = {}
@@ -266,11 +267,11 @@ class DataContainer(object):
         
         # copy to the cost dataframe
         self.df_clean["c_acc"] = self.df_clean["r_acc"]\
-            [["lanes","label","environment","value","gdp_growth_adjustment"]].copy()
+            [["lanes","layout","environment","value","gdp_growth_adjustment"]].copy()
 
         self.df_clean["c_acc"].reset_index(inplace=True)
         self.df_clean["c_acc"].set_index(\
-            ["category","lanes","label","environment"], inplace=True)
+            ["category","lanes","layout","environment"], inplace=True)
 
 
     def _wrangle_greenhouse(self, verbose=False):

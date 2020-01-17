@@ -53,7 +53,7 @@ class RoadCBA(DataContainer):
         self.envs = ENVIRONMENTS
 
         # define empty frames
-        self.R = None       # road parameters
+        self.RP = None       # road parameters
         self.C_fin = None
         self.C_eco = None
         self.O0_fin = None
@@ -114,22 +114,21 @@ class RoadCBA(DataContainer):
         """
         if verbose:
             print("Reading project inputs from df...")
-        self.R = df_road_params
+        self.RP = df_road_params
         self.C_fin = df_capex
         self.I0 = df_int_0
         self.I1 = df_int_1
-        # TODO: VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
 
         # assign core variables
         self._assign_remaining_years()
-        self.secs_0 = self.R[self.R.variant_0 == 1].index
-        self.secs_1 = self.R[self.R.variant_1 == 1].index
+        self.secs_0 = self.RP[self.RP.variant_0 == 1].index
+        self.secs_1 = self.RP[self.RP.variant_1 == 1].index
         self.secs_old = \
-            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 1)].index
+            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 1)].index
         self.secs_repl = \
-            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 0)].index
+            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 0)].index
         self.secs_new = \
-            self.R[(self.R.variant_0 == 0) & (self.R.variant_1 == 1)].index
+            self.RP[(self.RP.variant_0 == 0) & (self.RP.variant_1 == 1)].index
 
     
     def read_project_inputs_csv(self,
@@ -139,53 +138,49 @@ class RoadCBA(DataContainer):
                                 file_int_1,
                                 verbose=False
                                 ):
-        # TODO: VERIFY EXTENSIONS
         if verbose:
             print("Reading project inputs from csv...")
-        self.R = pd.read_csv(file_road_params, index_col=0)
+        self.RP = pd.read_csv(file_road_params, index_col=0)
         self.C_fin = pd.read_csv(file_capex, index_col=0)
         self.I0 = pd.read_csv(file_int_0).reset_index()
         self_I0.set_index(["id_section", "vehicle"], inplace=True)
         self.I1 = pd.read_csv(file_int_1).reset_index()
         self.I1.reset_index(inplace=True)
         self.I1.set_index(["id_section", "vehicle"], inplace=True)
-        # TODO: VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
 
         # assign core variables
         self._assign_remaining_years()
-        self.secs_0 = self.R[self.R.variant_0 == 1].index
-        self.secs_1 = self.R[self.R.variant_1 == 1].index
+        self.secs_0 = self.RP[self.RP.variant_0 == 1].index
+        self.secs_1 = self.RP[self.RP.variant_1 == 1].index
         self.secs_old = \
-            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 1)].index
+            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 1)].index
         self.secs_repl = \
-            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 0)].index
+            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 0)].index
         self.secs_new = \
-            self.R[(self.R.variant_0 == 0) & (self.R.variant_1 == 1)].index
+            self.RP[(self.RP.variant_0 == 0) & (self.RP.variant_1 == 1)].index
 
 
     def read_project_inputs_excel(self, file_xls, verbose=False):
-        # TODO: VERIFY EXTENSION
         if verbose:
             print("Reading project inputs from xls/xlsx...")
         xls = pd.ExcelFile(file_xls)
-        self.R = xls.parse("road_params", index_col=0)
+        self.RP = xls.parse("road_params", index_col=0)
         self.C_fin = xls.parse("capex_fin", index_col=0)
         self.I0 = xls.parse("intensities_0").reset_index()
         self.I0.set_index(["id_section", "vehicle"], inplace=True)
         self.I1 = xls.parse("intensities_1").reset_index()
         self.I1.set_index(["id_section", "vehicle"], inplace=True)
-        # TODO: VERIFY INTEGRITY AND CONSISTENCY OF INPUTS
 
         # assign core variables
         self._assign_remaining_years()
-        self.secs_0 = self.R[self.R.variant_0 == 1].index
-        self.secs_1 = self.R[self.R.variant_1 == 1].index
+        self.secs_0 = self.RP[self.RP.variant_0 == 1].index
+        self.secs_1 = self.RP[self.RP.variant_1 == 1].index
         self.secs_old = \
-            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 1)].index
+            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 1)].index
         self.secs_repl = \
-            self.R[(self.R.variant_0 == 1) & (self.R.variant_1 == 0)].index
+            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 0)].index
         self.secs_new = \
-            self.R[(self.R.variant_0 == 0) & (self.R.variant_1 == 1)].index
+            self.RP[(self.RP.variant_0 == 0) & (self.RP.variant_1 == 1)].index
 
 
     def read_intensities(self, df_int_0, df_int_1):
@@ -196,15 +191,15 @@ class RoadCBA(DataContainer):
 
 
     def read_intensities_csv(self, csv_int_0, csv_int_1):
-        pass
+        raise NotImplementedError()
 
     
     def read_intensities_excel(self, xls_int):
-        pass
+        raise NotImplementedError()
 
 
     def fill_intensities(self):
-        pass
+        raise NotImplementedError()
 
 
     def read_velocities(self, df_vel_0, df_vel_1, verbose=False):
@@ -256,13 +251,13 @@ class RoadCBA(DataContainer):
         self.C_fin = pd.DataFrame(self.C_fin, columns=self.yrs).fillna(0)
         self.C_fin_tot = pd.DataFrame(self.C_fin.sum(1), columns=["value"])
 
-        # apply conversion factors to get econ CAPEX
-        cf = self.C_fin.copy()\
+        # apply conversion factors to get economic CAPEX
+        self.cf = self.C_fin.copy()\
             .merge(self.df_clean["conv_fac"][["aggregate"]], \
             how="left", on="item")\
             .fillna(self.df_clean["conv_fac"]\
             .loc["construction", "aggregate"])["aggregate"]
-        self.C_eco = self.C_fin.multiply(cf, axis=0)
+        self.C_eco = self.C_fin.multiply(self.cf, axis=0)
         self.C_eco_tot = pd.DataFrame(self.C_eco.sum(1), columns=["value"])
 
         self.NC["capex"] = self.C_eco.sum()
@@ -282,7 +277,8 @@ class RoadCBA(DataContainer):
         RV.rem_ratio.fillna(1.0, inplace=True) # fill land
 
         # financial
-        self.RV_fin = RV.merge(self.C_fin_tot, how="left", on="item")
+        self.RV_fin = RV.merge(self.C_fin_tot, how="left", on="item")\
+            .fillna(0)
         self.RV_fin["res_value"] = np.where(self.RV_fin.replace == 0,\
             self.RV_fin.value * self.RV_fin.rem_ratio,\
             self.RV_fin.value * self.RV_fin.rem_ratio * \
@@ -302,9 +298,6 @@ class RoadCBA(DataContainer):
 
     def compute_opex(self):
         """Create a dataframe of operation costs (OPEX)."""
-        self._create_unit_cost_opex_matrix()  # define UC[c]
-        self._create_unit_cost_opex_mask()
-
         UC = self.UC["c_op"].copy()
 
         # create area matrix
@@ -317,7 +310,7 @@ class RoadCBA(DataContainer):
             "area_type", "item"]).sort_index()
         
         # variant 0
-        RA0 = self.R.loc[self.secs_0, ["category", "length", \
+        RA0 = self.RP.loc[self.secs_0, ["category", "length", \
             "length_bridges", "length_tunnels", "width"]].copy()
         RA0["pavements"] = RA0.width * RA0.length * 1e3
         RA0["bridges"] = RA0.width * RA0.length_bridges * 1e3
@@ -329,10 +322,11 @@ class RoadCBA(DataContainer):
         RA0 = RA0.groupby(["id_section", "category", "area_type"])\
             [["value"]].sum()
         
-        # time matrix of areas
+        # time matrix of road areas
         RA0 = pd.DataFrame(np.outer(RA0.value, np.ones_like(self.yrs)), \
             index=RA0.index, columns=self.yrs)
         
+        # summary
         self.O0_fin = (RA0 * (UC * self.mask0)).dropna().droplevel(\
             ["category", "area_type"]).reorder_levels([0, 2, 1]).sort_index()
         
@@ -342,7 +336,7 @@ class RoadCBA(DataContainer):
         if not O1_repl.empty:
             O1_repl[self.yrs_op] = 0.0
         
-        RA1 = self.R.loc[self.secs_new, ["category","length",\
+        RA1 = self.RP.loc[self.secs_new, ["category","length",\
             "length_bridges","length_tunnels","width"]].copy()
         RA1["pavements"] = RA1.width * RA1.length * 1e3
         RA1["bridges"] = RA1.width * RA1.length_bridges * 1e3
@@ -354,10 +348,11 @@ class RoadCBA(DataContainer):
         RA1 = RA1.groupby(["id_section", "category", "area_type"])\
             [["value"]].sum()
         
-        # time matrix of areas
+        # time matrix of road areas
         RA1 = pd.DataFrame(np.outer(RA1.value, np.ones_like(self.yrs)), \
             index=RA1.index, columns=self.yrs)
         
+        # summary
         O1_new = (RA1 * (UC * self.mask1)).dropna().droplevel(\
             ["category", "area_type"]).reorder_levels([0, 2, 1]).sort_index()
         self.O1_fin = pd.concat([O1_old, O1_repl, O1_new]).sort_index()
@@ -375,39 +370,6 @@ class RoadCBA(DataContainer):
         self.NC["opex"] = self.O1_eco.sum() - self.O0_eco.sum()
 
 
-#    def compute_opex(self):
-#        """Create a dataframe of operation costs (OPEX).
-#        Only new road sections are considered."""
-#        c = "c_op"
-#        self._create_unit_cost_opex_matrix()  # define UC[c]
-#        self._create_unit_cost_opex_mask() # define O_mask
-#
-#        # compute pavement area
-#        self.R["area"] = self.R.length * 1e3 * self.R.width
-#        
-#        self.UO = self.UC[c] * self.O_mask
-#        
-#        dfs = {}
-#        for rid in self.secs_new:
-#            dfs[rid] = \
-#                pd.DataFrame(columns=self.yrs_op, index=["routine", "periodic"])
-#            dfs[rid].index.name = "operation_type"
-#            rcat = self.R.loc[rid, "category"]
-#            tmp = self.UO.reset_index(["operation_type", "category"])
-#            tmp = tmp[tmp.category == rcat]
-#
-#            dfs[rid].loc["routine"] = tmp[tmp.operation_type == "routine"]\
-#                .drop(columns=["operation_type", "category"]).sum(axis=0) *\
-#                self.R.loc[rid, "area"]
-#
-#            dfs[rid].loc["periodic"] = tmp[tmp.operation_type == "periodic"]\
-#                .drop(columns=["operation_type", "category"]).sum(axis=0) *\
-#                self.R.loc[rid, "area"]
-#
-#        self.O_fin = pd.concat(dfs.values(), keys=dfs.keys())
-#        self.O_fin.index.names = ["id_section", "operation_type"]
-
-
     def _compute_toll(self):
         pass
 
@@ -415,21 +377,53 @@ class RoadCBA(DataContainer):
     # =====
     # Preparation functions
     # =====
-    def _create_unit_cost_opex_matrix(self, verbose=False):
+    def _create_unit_cost_matrix(self, verbose=False):
+        """Define the unit cost matrices for each benefit"""
         if verbose:
-            print("Creating time matrix for OPEX...")
-        c = "c_op"
+            print("Creating time matrices for benefits...")
 
-        self.UC[c] = \
-            pd.DataFrame(columns=self.yrs, index=self.df_clean[c].index)
+        for b in ["c_op", "toll_op", \
+            "vtts", "voc", "c_fuel", "c_acc", "c_em", "noise"]:
+            if verbose:
+                print("Creating: %s" % b)
+            self.UC[b] = \
+                pd.DataFrame(columns=self.yrs, index=self.df_clean[b].index)
+            self.UC[b][self.yr_i] = self.df_clean[b].value
+            for yr in self.yrs[1:]:
+                self.UC[b][yr] = \
+                    self.UC[b][self.yr_i]# * self.cpi.loc[yr, "cpi_index"]
+                if "gdp_growth_adjustment" in self.df_clean[b].columns:
+                    self.UC[b][yr] = self.UC[b][yr] \
+                    * (1.0 + self.gdp_growth.loc[yr].gdp_growth \
+                    * self.df_clean[b].gdp_growth_adjustment)
 
-        self.UC[c][self.yr_i] = self.df_clean[c].value
-        for yr in self.yrs[1:]:
-            self.UC[c][yr] = \
-                self.UC[c][self.yr_i]# * self.cpi.loc[yr, "cpi_index"]
-        
-        self.UC[c] = self.UC[c].round(2)
-#        self.UC[c] = self.UC[c][self.yrs_op] # choose years of operation
+            if b in ["noise"]:
+                self.UC[b] = self.UC[b].sort_index().round(5)
+            else:
+                self.UC[b] = self.UC[b].sort_index().round(2)
+
+        # greenhouse unit cost computed separately
+        b = "c_gg"
+        self.UC[b] = \
+            pd.DataFrame(self.df_clean[b].loc[self.yr_i:self.yr_f, "value"])
+        self.UC[b].columns = ["co2eq"] 
+        self.UC[b] = self.UC[b].T
+
+    
+#    def _create_unit_cost_opex_matrix(self, verbose=False):
+#        if verbose:
+#            print("Creating time matrix for OPEX...")
+#        c = "c_op"
+#
+#        self.UC[c] = \
+#            pd.DataFrame(columns=self.yrs, index=self.df_clean[c].index)
+#
+#        self.UC[c][self.yr_i] = self.df_clean[c].value
+#        for yr in self.yrs[1:]:
+#            self.UC[c][yr] = \
+#                self.UC[c][self.yr_i]# * self.cpi.loc[yr, "cpi_index"]
+#        
+#        self.UC[c] = self.UC[c].round(2)
 
 
     def _create_unit_cost_opex_mask(self):
@@ -473,42 +467,11 @@ class RoadCBA(DataContainer):
             ["category", "operation_type", "item"]).sort_index()
 
 
-    def _create_unit_cost_matrix(self, verbose=False):
-        """Define the unit cost matrices for each benefit"""
-        if verbose:
-            print("Creating time matrices for benefits...")
-
-        for b in ["vtts", "voc", "c_fuel", "c_acc", "c_em", "noise"]:
-            if verbose:
-                print("Creating: %s" % b)
-            self.UC[b] = \
-                pd.DataFrame(columns=self.yrs, index=self.df_clean[b].index)
-            self.UC[b][self.yr_i] = self.df_clean[b].value
-            for yr in self.yrs[1:]:
-                self.UC[b][yr] = \
-                    self.UC[b][self.yr_i]# * self.cpi.loc[yr, "cpi_index"]
-                if "gdp_growth_adjustment" in self.df_clean[b].columns:
-                    self.UC[b][yr] = self.UC[b][yr] \
-                    * (1.0 + self.gdp_growth.loc[yr].gdp_growth \
-                    * self.df_clean[b].gdp_growth_adjustment)
-
-            if b in ["noise"]:
-                self.UC[b] = self.UC[b].sort_index().round(5)
-            else:
-                self.UC[b] = self.UC[b].sort_index().round(2)
-
-        b = "c_gg"
-        self.UC[b] = \
-            pd.DataFrame(self.df_clean[b].loc[self.yr_i:self.yr_f, "value"])
-        self.UC[b].columns = ["co2eq"] 
-        self.UC[b] = self.UC[b].T
-
-    
     def _create_length_matrix(self):
         """Create the matrix of lengs with years as columns"""
         self.L = pd.DataFrame(\
-            np.outer(self.R.length, np.ones_like(self.yrs)), \
-            columns=self.yrs, index=self.R.index)
+            np.outer(self.RP.length, np.ones_like(self.yrs)), \
+            columns=self.yrs, index=self.RP.index)
 
 
     def _compute_travel_time_matrix(self):
@@ -524,7 +487,12 @@ class RoadCBA(DataContainer):
 
 
     def compute_costs_benefits(self):
-        """Compute financial and economic costs"""
+        """Compute financial and economic costs and benefits"""
+        # unit costs
+        self._create_unit_cost_matrix()
+#        self._create_unit_cost_opex_matrix()
+        self._create_unit_cost_opex_mask()
+
         # costs
         self.compute_capex()
         self.compute_opex()
@@ -535,7 +503,6 @@ class RoadCBA(DataContainer):
         self._create_length_matrix()
         self._compute_travel_time_matrix()
         
-        self._create_unit_cost_matrix()
         self._compute_vtts()
         self._compute_voc()
         self._create_fuel_ratio_matrix()
@@ -558,16 +525,18 @@ class RoadCBA(DataContainer):
                    keys=["cost", "benefit"], names=["type", "item"])\
                    .round(2)
 
-        self.df_enpv = self.df_eco\
-            .apply(lambda x: np.npv(self.r_eco, x), axis=1).round(2)
+        self.df_enpv = pd.DataFrame(self.df_eco\
+            .apply(lambda x: np.npv(self.r_eco, x), axis=1).round(2), \
+            columns=["value"])
+
         self.ENPV = np.npv(self.r_eco, self.df_eco.sum())
         self.EIRR = np.irr(self.df_eco.sum())
         self.EBCR = \
-            self.df_enpv.loc["benefit"].sum() / self.df_enpv.loc["cost"].sum()
+            self.df_enpv.loc["benefit"].sum() / -self.df_enpv.loc["cost"].sum()
 
-        print("ENPV: %.3f M" % (self.ENPV / 1e6))
-        print("EIRR: %.3f %%" % (self.EIRR*100))
-        print("BCR : %.3f" % self.EBCR)
+        print("ENPV: %.2f M" % (self.ENPV / 1e6))
+        print("EIRR: %.2f %%" % (self.EIRR * 100))
+        print("BCR : %.2f" % self.EBCR)
 
 
     def _compute_vtts(self):
@@ -584,18 +553,36 @@ class RoadCBA(DataContainer):
         dum = pd.DataFrame(1, index=pd.MultiIndex.from_product(\
             [self.L.index, self.UC[b].index]), columns=self.yrs)
         dum.index.names = ["id_section", "vehicle"]
-        self.L * dum
         self.B0[b] = ((self.UC[b] * dum) * self.L).loc[self.secs_0] * \
-            self.I0 * DAYS_YEAR
+            self.I0 * DAYS_YEAR  # REMOVE PART WITH loc
         self.B1[b] = ((self.UC[b] * dum) * self.L).loc[self.secs_1] * \
-            self.I1 * DAYS_YEAR
+            self.I1 * DAYS_YEAR  # REMOVE PART WITH loc
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
+
+    def _compute_accidents(self):
+        b = "acc"
+        scale = 1e-8
+        LL = self.L.merge(\
+            self.RP[["lanes", "environment", "category", "layout"]], \
+            how="left", on="id_section").reset_index()\
+            .set_index(["id_section", "lanes", "environment", "category", \
+            "layout"]).reorder_levels(\
+                ["id_section", "category", "lanes", "layout", "environment"])
+        LL.columns = LL.columns.astype(int)
+
+        UCA = (LL * self.UC["c_acc"] * scale)\
+            .droplevel(["layout","lanes","category","environment"])\
+            .dropna(subset=[self.yr_i]).sort_index()
+
+        self.B0[b] = UCA * self.I0 * DAYS_YEAR
+        self.B1[b] = UCA * self.I1 * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
     def _compute_fuel_consumption(self):
         """Compute the consumption by section, vehicle and fuel type"""
         # polynomial coefficients and consumption function
-        
         def vel2cons(c, v):
             """Convert velocity in km/h to fuel consumption in
             kg/km via a polynomial"""
@@ -631,28 +618,8 @@ class RoadCBA(DataContainer):
 
     def _compute_fuel_cost(self):
         b = "fuel"
-        self.B0[b] = \
-            (self.UC["c_fuel"] * self.RF) * (self.QF0 * self.I0) * DAYS_YEAR
-        self.B1[b] = \
-            (self.UC["c_fuel"] * self.RF) * (self.QF1 * self.I1) * DAYS_YEAR
-        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
-
-
-    def _compute_accidents(self):
-        b = "acc"
-        scale = 1e-8
-        L = self.L.merge(\
-            self.R[["lanes", "environment", "category", "label"]], \
-            how="left", on="id_section").reset_index()\
-            .set_index(["id_section", "lanes", "environment", "category", \
-            "label"]).reorder_levels([0, 3, 1, 4, 2])
-
-        UCA = (L * self.UC["c_acc"] * scale)\
-            .droplevel(["label","lanes","category","environment"])\
-            .dropna(subset=[self.yr_i]).sort_index()
-
-        self.B0[b] = UCA * self.I0 * DAYS_YEAR
-        self.B1[b] = UCA * self.I1 * DAYS_YEAR
+        self.B0[b] = (self.UC["c_fuel"] * self.RF) * (self.QF0 * self.I0) * DAYS_YEAR
+        self.B1[b] = (self.UC["c_fuel"] * self.RF) * (self.QF1 * self.I1) * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
@@ -683,7 +650,7 @@ class RoadCBA(DataContainer):
             .set_index(["environment","vehicle","fuel"]).sort_index()
 
         # add section ID
-        UCE = UCE.reset_index().merge(self.R.environment.reset_index(), \
+        UCE = UCE.reset_index().merge(self.RP.environment.reset_index(), \
             how="left", on="environment").set_index(\
             ["id_section","environment","vehicle","fuel"]).sort_index()
 
@@ -697,7 +664,7 @@ class RoadCBA(DataContainer):
     def _compute_noise(self):
         b = "noise"
         scale = 1e-3
-        L = self.L.reset_index().merge(self.R.environment.reset_index())
+        L = self.L.reset_index().merge(self.RP.environment.reset_index())
         L = L.set_index(["id_section", "environment"])
         
         # CN: cost of noise in EUR

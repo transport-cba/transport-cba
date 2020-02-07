@@ -4,9 +4,14 @@ import os
 
 
 available_countries = ["svk"]
+svk_params = ["gdp_growth", "cpi", "c_op", "toll_op", "res_val", \
+    "c_fuel", "conv_fac", \
+    "occ_p", "occ_f", "r_tp", "vtts", "voc", "fuel_coeffs", \
+    "r_acc", "c_acc", "r_gg", "c_gg", "r_em", "c_em", "noise"]
 
 
-class DataContainer(object):
+
+class ParamContainer(object):
     def __init__(self, country, price_level):
         """Read in all the CBA values necessary for economic analysis
         for a given country"""
@@ -19,16 +24,12 @@ class DataContainer(object):
         
         self.df_raw = {}
         self.df_clean = {}
-        self.TM_fin = {}
-        self.TM_eco = {}
+#        self.TM_fin = {}
+#        self.TM_eco = {}
 
 
-#    def __dir__(self):
-#        return [attr for attr in dir(self) if not attr[:2] == "__"]
-
-
-    def read_data(self, verbose=False):
-        """Read in all the relevant data"""
+    def read_raw_params(self, verbose=False):
+        """Read in all the relevant parameter files"""
         if verbose:
             print("Reading CBA parameters...")
 
@@ -85,7 +86,6 @@ class DataContainer(object):
 
 
     def adjust_cpi(self, infl=0.02, yr_min=2000, yr_max=2050, verbose=False):
-#    def adjust_cpi(self, infl=0.02, N_bw=20, N_fw=30, verbose=False):
         """Fill in mising values and compute cumulative inflation 
         to be able to adjust the price level"""
         if verbose:
@@ -112,7 +112,7 @@ class DataContainer(object):
                 self.cpi.iloc[i-1].cpi_index * (self.cpi.iloc[i-1].cpi + 1.0)
 
 
-    def clean_data(self, verbose=False):
+    def clean_params(self, verbose=False):
         """Remove unimportant columns and populate the df_clean dictionary"""
         if verbose:
             print("Cleaning parameters...")
@@ -148,7 +148,7 @@ class DataContainer(object):
             self.df_clean[c]["value"] = self.df_clean[c].value.round(3)
 
 
-    def wrangle_data(self, *args, **kwargs):
+    def wrangle_params(self, *args, **kwargs):
         if "verbose" in kwargs.keys() and kwargs["verbose"]:
             print("Wrangling parameters...")
         self._wrangle_opex(*args, **kwargs)
@@ -305,7 +305,7 @@ class DataContainer(object):
         self.df_clean[b]["value2"] = self.df_clean[b].value\
             * self.df_clean[b].ratio
         gr = self.df_clean[b]\
-            .groupby(["vehicle","environment","gdp_growth_adjustment"])
+            .groupby(["vehicle", "environment", "gdp_growth_adjustment"])
 
         self.df_clean[b] = gr["value2"].sum()
         self.df_clean[b] = self.df_clean[b].reset_index()

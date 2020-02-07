@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
 from numpy.matlib import repmat
-from itertools import product
-from .data_container import DataContainer
+from .param_container import ParamContainer
 
 
 VEHICLE_TYPES = ["car", "lgv", "hgv", "bus"]
@@ -10,7 +9,7 @@ ENVIRONMENTS = ["intravilan", "extravilan"]
 DAYS_YEAR = 365.0
 
 
-class RoadCBA(DataContainer):
+class RoadCBA(ParamContainer):
     def __init__(self,
                  init_year,
                  price_level,
@@ -52,6 +51,8 @@ class RoadCBA(DataContainer):
         self.veh_types = VEHICLE_TYPES
         self.envs = ENVIRONMENTS
 
+        self.verbose = verbose
+
         # define empty frames
         self.RP = None       # road parameters
         self.C_fin = None
@@ -78,25 +79,36 @@ class RoadCBA(DataContainer):
         super().__init__(self.country, self.yr_i)
 
 
-    def prepare_parameters(self, verbose=False):
+    def prepare_parameters(self):
         """Read in and manipulate all the CBA parameters"""
-        super().read_data(verbose=verbose)
-        super().adjust_cpi(yr_max=self.yr_f, verbose=verbose)
-        super().clean_data(verbose=verbose)
-        super().adjust_price_level(verbose=verbose)
-        super().wrangle_data(verbose=verbose)
+        super().read_raw_params(verbose=self.verbose)
+        super().adjust_cpi(yr_max=self.yr_f, verbose=self.verbose)
+        super().clean_params(verbose=self.verbose)
+        super().adjust_price_level(verbose=self.verbose)
+        super().wrangle_params(verbose=self.verbose)
 
     
     # =====
     # Initialisation functions
     # =====
-    def _assign_remaining_years(self):
+    def _assign_core_variables(self):
+        """After reading project inputs define years of operation
+        and various arrays of sections"""
         if self.C_fin is not None:
             self.yr_op = int(self.C_fin.columns[-1]) + 1
             self.N_yr_bld = len(self.C_fin.columns)
             self.N_yr_op = self.N_yr - self.N_yr_bld
             self.yrs_op = \
                 np.arange(self.yr_i + self.N_yr_bld, self.yr_i + self.N_yr)
+        
+            self.secs_0 = self.RP[self.RP.variant_0 == 1].index
+            self.secs_1 = self.RP[self.RP.variant_1 == 1].index
+            self.secs_old = \
+                self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 1)].index
+            self.secs_repl = \
+                self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 0)].index
+            self.secs_new = \
+                self.RP[(self.RP.variant_0 == 0) & (self.RP.variant_1 == 1)].index
 
 
     def read_project_inputs(self,
@@ -104,64 +116,28 @@ class RoadCBA(DataContainer):
                             df_capex,
                             df_int_0,
                             df_int_1,
-                            verbose=False
-                            ):
+                            df_vel_0,
+                            df_vel_1,):
         """Read the dataframes
         * road parameters
         * capital investment (CAPEX)
-        * intensities in 0th variant
-        * intensities in 1st variant
-        """
-        if verbose:
+        * intensities in variants 0 and 1
+        * velocities in variant 0 and 1"""
+        if self.verbose:
             print("Reading project inputs from df...")
         self.RP = df_road_params
         self.C_fin = df_capex
         self.I0 = df_int_0
         self.I1 = df_int_1
+        self.V0 = df_vel_0
+        self.V1 = df_vel_1
 
         # assign core variables
-        self._assign_remaining_years()
-        self.secs_0 = self.RP[self.RP.variant_0 == 1].index
-        self.secs_1 = self.RP[self.RP.variant_1 == 1].index
-        self.secs_old = \
-            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 1)].index
-        self.secs_repl = \
-            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 0)].index
-        self.secs_new = \
-            self.RP[(self.RP.variant_0 == 0) & (self.RP.variant_1 == 1)].index
+        self._assign_core_variables()
 
     
-    def read_project_inputs_csv(self,
-                                file_road_params,
-                                file_capex,
-                                file_int_0,
-                                file_int_1,
-                                verbose=False
-                                ):
-        if verbose:
-            print("Reading project inputs from csv...")
-        self.RP = pd.read_csv(file_road_params, index_col=0)
-        self.C_fin = pd.read_csv(file_capex, index_col=0)
-        self.I0 = pd.read_csv(file_int_0).reset_index()
-        self_I0.set_index(["id_section", "vehicle"], inplace=True)
-        self.I1 = pd.read_csv(file_int_1).reset_index()
-        self.I1.reset_index(inplace=True)
-        self.I1.set_index(["id_section", "vehicle"], inplace=True)
-
-        # assign core variables
-        self._assign_remaining_years()
-        self.secs_0 = self.RP[self.RP.variant_0 == 1].index
-        self.secs_1 = self.RP[self.RP.variant_1 == 1].index
-        self.secs_old = \
-            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 1)].index
-        self.secs_repl = \
-            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 0)].index
-        self.secs_new = \
-            self.RP[(self.RP.variant_0 == 0) & (self.RP.variant_1 == 1)].index
-
-
-    def read_project_inputs_excel(self, file_xls, verbose=False):
-        if verbose:
+    def read_project_inputs_xls(self, file_xls):
+        if self.verbose:
             print("Reading project inputs from xls/xlsx...")
         xls = pd.ExcelFile(file_xls)
         self.RP = xls.parse("road_params", index_col=0)
@@ -172,73 +148,102 @@ class RoadCBA(DataContainer):
         self.I1.set_index(["id_section", "vehicle"], inplace=True)
 
         # assign core variables
-        self._assign_remaining_years()
-        self.secs_0 = self.RP[self.RP.variant_0 == 1].index
-        self.secs_1 = self.RP[self.RP.variant_1 == 1].index
-        self.secs_old = \
-            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 1)].index
-        self.secs_repl = \
-            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 0)].index
-        self.secs_new = \
-            self.RP[(self.RP.variant_0 == 0) & (self.RP.variant_1 == 1)].index
+        self._assign_core_variables()
 
 
-    def read_intensities(self, df_int_0, df_int_1):
-        if verbose:
-            print("Loading intensities from df...")
+#    def read_project_inputs_csv(self,
+#                                file_road_params,
+#                                file_capex,
+#                                file_int_0,
+#                                file_int_1,
+#                                verbose=False
+#                                ):
+#        if verbose:
+#            print("Reading project inputs from csv...")
+#        self.RP = pd.read_csv(file_road_params, index_col=0)
+#        self.C_fin = pd.read_csv(file_capex, index_col=0)
+#        self.I0 = pd.read_csv(file_int_0).reset_index()
+#        self_I0.set_index(["id_section", "vehicle"], inplace=True)
+#        self.I1 = pd.read_csv(file_int_1).reset_index()
+#        self.I1.reset_index(inplace=True)
+#        self.I1.set_index(["id_section", "vehicle"], inplace=True)
+#
+#        # assign core variables
+#        self._assign_remaining_years()
+#        self.secs_0 = self.RP[self.RP.variant_0 == 1].index
+#        self.secs_1 = self.RP[self.RP.variant_1 == 1].index
+#        self.secs_old = \
+#            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 1)].index
+#        self.secs_repl = \
+#            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 0)].index
+#        self.secs_new = \
+#            self.RP[(self.RP.variant_0 == 0) & (self.RP.variant_1 == 1)].index
+
+
+    def replace_intensities(self, df_int_0, df_int_1):
+        if self.verbose:
+            print("Replacing intensities...")
         self.I0 = df_int_0
         self.I1 = df_int_1
 
 
-    def read_intensities_csv(self, csv_int_0, csv_int_1):
-        raise NotImplementedError()
-
-    
-    def read_intensities_excel(self, xls_int):
-        raise NotImplementedError()
-
-
-    def fill_intensities(self):
-        raise NotImplementedError()
-
-
-    def read_velocities(self, df_vel_0, df_vel_1, verbose=False):
-        if verbose:
-            print("Loading velocities from df...")
+    def replace_velocities(self, df_vel_0, df_vel_1):
+        if self.verbose:
+            print("Replacing velocities...")
         self.V0 = df_vel_0
         self.V1 = df_vel_1
 
 
-    def read_velocities_csv(self, csv_vel_0, csv_vel_1, verbose=False):
-        """Read the dataframe of velocities ordered by project section
-        and vehicle category"""
-        if csv_vel_0[-3:] != "csv" or csv_vel_1[-3:] != "csv":
-            print("One of files does not have required extension: csv.")
+#    def read_velocities_csv(self, csv_vel_0, csv_vel_1, verbose=False):
+#        """Read the dataframe of velocities ordered by project section
+#        and vehicle category"""
+#        if csv_vel_0[-3:] != "csv" or csv_vel_1[-3:] != "csv":
+#            print("One of files does not have required extension: csv.")
+#
+#        if verbose:
+#            print("Reading velocities from csv...")
+#        self.V0 = pd.read_csv(csv_vel_0).reset_index()
+#        self.V0.set_index(["id_section", "vehicle"], inplace=True)
+#        self.V1 = pd.read_csv(csv_vel_1).reset_index()
+#        self.V1.set_index(["id_section", "vehicle"], inplace=True)
+#
+#
+#    def read_velocities_excel(self, xls_vel, verbose=False):
+#        """Read the dataframe of velocities from one excel file."""
+#        if not xls_vel.split(".")[-1] in ["xls", "xlsx"]:
+#            print("File does not have the required extension: xls, xlsx.")
+#
+#        if verbose:
+#            print("Reading velocities xls/xlsx...")
+#        self.V0 = pd.read_excel(xls_vel, sheet_name="velocities_0")
+#        self.V0.set_index(["id_section", "vehicle"], inplace=True)
+#        self.V1 = pd.read_excel(xls_vel, sheet_name="velocities_1")
+#        self.V1.set_index(["id_section", "vehicle"], inplace=True)
 
-        if verbose:
-            print("Reading velocities from csv...")
-        self.V0 = pd.read_csv(csv_vel_0).reset_index()
-        self.V0.set_index(["id_section", "vehicle"], inplace=True)
-        self.V1 = pd.read_csv(csv_vel_1).reset_index()
-        self.V1.set_index(["id_section", "vehicle"], inplace=True)
 
+    def _verify_input_integrity(self):
+        int_idx = ["id_section", "vehicle"]
+        assert self.I0 is not None, "I0 not defined."
+        assert self.I0.index.names == int_idx, "Index of I0 not correct."
+        assert self.I1 is not None, "I1 not defined."
+        assert self.I1.index.names == int_idx, "Index of I1 not correct."
 
-    def read_velocities_excel(self, xls_vel, verbose=False):
-        """Read the dataframe of velocities from one excel file."""
-        if not xls_vel.split(".")[-1] in ["xls", "xlsx"]:
-            print("File does not have the required extension: xls, xlsx.")
+        assert self.V0 is not None, "V0 not defined."
+        assert self.V0.index.names == int_idx, "Index of V0 not correct."
+        assert self.V1 is not None, "V1 not defined."
+        assert self.V1.index.names == int_idx, "Index of V1 not correct."
 
-        if verbose:
-            print("Reading velocities xls/xlsx...")
-        self.V0 = pd.read_excel(xls_vel, sheet_name="velocities_0")
-        self.V0.set_index(["id_section", "vehicle"], inplace=True)
-        self.V1 = pd.read_excel(xls_vel, sheet_name="velocities_1")
-        self.V1.set_index(["id_section", "vehicle"], inplace=True)
+        capex_idx = ["land", "pavements", "bridges", "tunnels", "buildings",\
+            "slope_stabilisation", "retaining_walls", "noise_barriers",\
+            "safety_features", "supervision", "planning_design"]
+        assert self.C_fin is not None, "CAPEX not defined."
+        assert set(self.C_fin.index) == set(capex_idx), "Index of CAPEX not correct."
 
-
-    def fill_velocities(self):
-        """Create the velocity matrices according to pre-defined rules"""
-        raise NotImplementedError()
+        rp_cols = ["name", "variant_0", "variant_1", "length", \
+            "length_bridges", "length_tunnels", "category", "lanes", \
+            "environment", "width", "layout", "toll_sections"]
+        assert self.RP is not None, "Road parameters not defined."
+        assert set(self.RP.columns) == set(rp_cols), "Columns of road parameters not correct."
 
 
     # =====
@@ -377,14 +382,14 @@ class RoadCBA(DataContainer):
     # =====
     # Preparation functions
     # =====
-    def _create_unit_cost_matrix(self, verbose=False):
+    def _create_unit_cost_matrix(self):
         """Define the unit cost matrices for each benefit"""
-        if verbose:
+        if self.verbose:
             print("Creating time matrices for benefits...")
 
         for b in ["c_op", "toll_op", \
             "vtts", "voc", "c_fuel", "c_acc", "c_em", "noise"]:
-            if verbose:
+            if self.verbose:
                 print("Creating: %s" % b)
             self.UC[b] = \
                 pd.DataFrame(columns=self.yrs, index=self.df_clean[b].index)
@@ -505,13 +510,13 @@ class RoadCBA(DataContainer):
         
         self._compute_vtts()
         self._compute_voc()
+        self._compute_accidents()
         self._create_fuel_ratio_matrix()
         self._compute_fuel_consumption()
         self._compute_fuel_cost()
         self._compute_greenhouse()
         self._compute_emissions()
         self._compute_noise()
-        self._compute_accidents()
 
 
     # =====
@@ -530,12 +535,12 @@ class RoadCBA(DataContainer):
             columns=["value"])
 
         self.ENPV = np.npv(self.r_eco, self.df_eco.sum())
-        self.EIRR = np.irr(self.df_eco.sum())
+        self.ERR = np.irr(self.df_eco.sum())
         self.EBCR = \
             self.df_enpv.loc["benefit"].sum() / -self.df_enpv.loc["cost"].sum()
 
         print("ENPV: %.2f M" % (self.ENPV / 1e6))
-        print("EIRR: %.2f %%" % (self.EIRR * 100))
+        print("ERR : %.2f %%" % (self.ERR * 100))
         print("BCR : %.2f" % self.EBCR)
 
 

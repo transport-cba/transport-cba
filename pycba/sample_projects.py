@@ -9,9 +9,9 @@ def load_sample_bypass():
     dirn = "../examples/"
     
     d = {}
-    d["R"] = pd.read_csv(dirn + "bypass_road_params.csv", index_col=0)
-    d["C_inv"] = pd.read_csv(dirn + "bypass_capex_fin.csv", index_col=0)
-    d["C_inv"].columns = d["C_inv"].columns.astype(int)
+    d["RP"] = pd.read_csv(dirn + "bypass_road_params.csv", index_col=0)
+    d["C_fin"] = pd.read_csv(dirn + "bypass_capex_fin.csv", index_col=0)
+    d["C_fin"].columns = d["C_fin"].columns.astype(int)
 
     d["I0"] = pd.read_csv(dirn + "bypass_intensities_0.csv")
     d["I1"] = pd.read_csv(dirn + "bypass_intensities_1.csv")
@@ -79,7 +79,19 @@ def load_sample_mountain_pass():
 
 
 def load_visnove():
-    pass
+    """Load inputs for the major motorway project 
+    D1 Hricovske Podhradie - Lietavska Lucka - Dubna Skala as an Excel file.
+    Contains the following sheets:
+    * Road parameters for the relevant road sections in the region
+    * CAPEX for three sections:
+     - Hricovske Podhradie - Lietavska Lucka
+     - Lietavska Lucka - Dubna Skala
+     - Feeder Lietavska Lucka
+    * Intensities in variants 0 and 1
+    * Velocities in variants 0 and 1
+    """
+    dirn = "../examples/"
+    return pd.ExcelFile(dirn + "inputs_cba_d1_hp_ll_ds.xlsx")
 
 
 def load_soroska():

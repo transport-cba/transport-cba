@@ -12,7 +12,7 @@ svk_params = ["gdp_growth", "cpi", "c_op", "toll_op", "res_val", \
 
 
 class ParamContainer(object):
-    def __init__(self, country, price_level):
+    def __init__(self, country, price_level, verbose=False):
         """Read in all the CBA values necessary for economic analysis
         for a given country"""
         if country not in available_countries:
@@ -21,6 +21,7 @@ class ParamContainer(object):
         self.country = country
         self.dirn = os.path.dirname(__file__) + "/../files/%s/" % self.country
         self.pl = price_level
+        self.verbose = verbose
         
         self.df_raw = {}
         self.df_clean = {}
@@ -28,9 +29,9 @@ class ParamContainer(object):
 #        self.TM_eco = {}
 
 
-    def read_raw_params(self, verbose=False):
+    def read_raw_params(self):
         """Read in all the relevant parameter files"""
-        if verbose:
+        if self.verbose:
             print("Reading CBA parameters...")
 
         # macro data
@@ -85,10 +86,10 @@ class ParamContainer(object):
             pd.read_csv(self.dirn + "noise.csv", index_col=0)
 
 
-    def adjust_cpi(self, infl=0.02, yr_min=2000, yr_max=2050, verbose=False):
+    def adjust_cpi(self, infl=0.02, yr_min=2000, yr_max=2100):
         """Fill in mising values and compute cumulative inflation 
         to be able to adjust the price level"""
-        if verbose:
+        if self.verbose:
             print("Adjusting CPI...")
 
         self.cpi = self.cpi.reindex(arange(yr_min, yr_max+1))
@@ -112,13 +113,13 @@ class ParamContainer(object):
                 self.cpi.iloc[i-1].cpi_index * (self.cpi.iloc[i-1].cpi + 1.0)
 
 
-    def clean_params(self, verbose=False):
+    def clean_params(self):
         """Remove unimportant columns and populate the df_clean dictionary"""
-        if verbose:
+        if self.verbose:
             print("Cleaning parameters...")
         for itm in self.df_raw.keys():
-            if verbose:
-                print("Cleaning: %s" % itm)
+            if self.verbose:
+                print("    Cleaning: %s" % itm)
             self.df_clean[itm] = self.df_raw[itm].copy()
             if "nb" in self.df_clean[itm].columns:
                 self.df_clean[itm].drop(columns=["nb"], inplace=True)
@@ -133,14 +134,14 @@ class ParamContainer(object):
 #                 self.df_clean[c].drop(columns=["scale"], inplace=True)
 
 
-    def adjust_price_level(self, verbose=False):
+    def adjust_price_level(self):
         """Unify the prices for one price level"""
-        if verbose:
+        if self.verbose:
             print("Adjusting price level...")
         for c in ["c_op", "toll_op", \
             "vtts", "voc", "c_fuel", "c_acc", "c_gg", "c_em", "noise"]:
-            if verbose:
-                print("Adjusting: %s" % c)
+            if self.verbose:
+                print("    Adjusting: %s" % c)
             self.df_clean[c]["value"] = self.df_clean[c].value \
                 * self.df_clean[c].price_level\
                 .map(lambda x: self.cpi.loc[x].cpi_index)
@@ -148,19 +149,19 @@ class ParamContainer(object):
             self.df_clean[c]["value"] = self.df_clean[c].value.round(3)
 
 
-    def wrangle_params(self, *args, **kwargs):
-        if "verbose" in kwargs.keys() and kwargs["verbose"]:
+    def wrangle_params(self):
+        if self.verbose:
             print("Wrangling parameters...")
-        self._wrangle_opex(*args, **kwargs)
-        self._wrangle_vtts(*args, **kwargs)
-        self._wrangle_fuel(*args, **kwargs)
-        self._wrangle_accidents(*args, **kwargs)
-        self._wrangle_greenhouse(*args, **kwargs)
-        self._wrangle_emissions(*args, **kwargs)
-        self._wrangle_noise(*args, **kwargs)
+        self._wrangle_opex()
+        self._wrangle_vtts()
+        self._wrangle_fuel()
+        self._wrangle_accidents()
+        self._wrangle_greenhouse()
+        self._wrangle_emissions()
+        self._wrangle_noise()
 
 
-    def _wrangle_opex(self, verbose=False):
+    def _wrangle_opex(self):
         """Set up index"""
         c = "c_op"
         self.df_clean[c].reset_index(inplace=True)
@@ -168,11 +169,11 @@ class ParamContainer(object):
             ["item","operation_type","category"], inplace=True)
 
 
-    def _wrangle_vtts(self, verbose=False):
+    def _wrangle_vtts(self):
         """Average the value of the travel time saved"""
         if "distance" in self.df_clean["vtts"].columns:
-            if verbose:
-                print("Averaging VTTS over distance.")
+            if self.verbose:
+                print("Averaging VTTS over distance type.")
             gr = self.df_clean["vtts"]\
                 .groupby(by=["vehicle","substance","purpose",\
                 "gdp_growth_adjustment"])
@@ -209,8 +210,8 @@ class ParamContainer(object):
         vtts.drop(columns=["value_subst","value_occ"], inplace=True)
 
         # contract by substance
-        vtts = vtts.groupby(by=["vehicle","purpose",\
-            "gdp_growth_adjustment","purpose_ratio"])\
+        vtts = vtts.groupby(by=["vehicle", "purpose",\
+            "gdp_growth_adjustment", "purpose_ratio"])\
             ["value"].sum().reset_index()
 
         # unify gdp growth adjustment by trip purpose ratio
@@ -224,7 +225,7 @@ class ParamContainer(object):
         self.df_clean["vtts"] = vtts.copy()
 
 
-    def _wrangle_fuel(self, verbose=True):
+    def _wrangle_fuel(self):
         """Convert units from eur/l to eur/kg"""
         # fuel ratios for vehicle types
         c = "r_fuel"
@@ -249,7 +250,7 @@ class ParamContainer(object):
         self.df_clean[c].drop(columns=["value"], inplace=True)
 
 
-    def _wrangle_accidents(self, verbose=False):
+    def _wrangle_accidents(self):
         """Unify the two datasets storing values for accidents"""
         self.df_clean["c_acc"]["value"] = self.df_clean["c_acc"].value *\
             self.df_clean["c_acc"].correct_unreported *\
@@ -274,7 +275,7 @@ class ParamContainer(object):
             ["category","lanes","layout","environment"], inplace=True)
 
 
-    def _wrangle_greenhouse(self, verbose=False):
+    def _wrangle_greenhouse(self):
         b = "r_gg"
         self.df_clean[b]["value"] = \
             self.df_clean[b].value * self.df_clean[b].factor
@@ -283,7 +284,7 @@ class ParamContainer(object):
         self.df_clean[b] = pd.DataFrame(gr).round(0)
 
 
-    def _wrangle_emissions(self, verbose=False):
+    def _wrangle_emissions(self):
         b = "c_em"
         self.df_clean[b].reset_index(inplace=True)
         self.df_clean[b].set_index(["polluant", "environment"], \
@@ -297,7 +298,7 @@ class ParamContainer(object):
         self.df_clean[b] = self.df_clean[b].sort_index()
 
 
-    def _wrangle_noise(self, verbose=False):
+    def _wrangle_noise(self):
         b = "noise"
         self.df_clean[b] = self.df_clean[b]\
             [self.df_clean[b].traffic_type == "thin"]

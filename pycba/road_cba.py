@@ -76,21 +76,34 @@ class RoadCBA(ParamContainer):
         self.NB = {}        # net benefits
         self.NC = {}        # net costs
 
-        super().__init__(self.country, self.yr_i)
+        super().__init__(self.country, self.yr_i, verbose=self.verbose)
+
+
+    # =====
+    # Initialisation functions
+    # =====
+    def load_parameters(self, source="default"):
+        """Read in the CBA parameters
+        Can read from a user-defined directory"""
+        if source == "default":
+            super().read_raw_params()
+        else:
+            raise NotImplementedError("To add soon.")
+            
+
+    def replace_parameter(self, param):
+        """Replace a specific parameter frame"""
+        raise NotImplementedError("To add soon.")
 
 
     def prepare_parameters(self):
         """Read in and manipulate all the CBA parameters"""
-        super().read_raw_params(verbose=self.verbose)
-        super().adjust_cpi(yr_max=self.yr_f, verbose=self.verbose)
-        super().clean_params(verbose=self.verbose)
-        super().adjust_price_level(verbose=self.verbose)
-        super().wrangle_params(verbose=self.verbose)
+        super().adjust_cpi(yr_max=self.yr_f)
+        super().clean_params()
+        super().adjust_price_level()
+        super().wrangle_params()
 
     
-    # =====
-    # Initialisation functions
-    # =====
     def _assign_core_variables(self):
         """After reading project inputs define years of operation
         and various arrays of sections"""
@@ -111,13 +124,8 @@ class RoadCBA(ParamContainer):
                 self.RP[(self.RP.variant_0 == 0) & (self.RP.variant_1 == 1)].index
 
 
-    def read_project_inputs(self,
-                            df_road_params,
-                            df_capex,
-                            df_int_0,
-                            df_int_1,
-                            df_vel_0,
-                            df_vel_1,):
+    def read_project_inputs(self, df_road_params, df_capex,\
+        df_int_0, df_int_1, df_vel_0, df_vel_1,):
         """Read the dataframes
         * road parameters
         * capital investment (CAPEX)
@@ -137,6 +145,8 @@ class RoadCBA(ParamContainer):
 
     
     def read_project_inputs_xls(self, file_xls):
+        assert file_xls.split(".")[-1] in ["xls", "xlsx"], \
+            "Invalid file extension. Must be xls or xlsx."
         if self.verbose:
             print("Reading project inputs from xls/xlsx...")
         xls = pd.ExcelFile(file_xls)
@@ -147,8 +157,21 @@ class RoadCBA(ParamContainer):
         self.I1 = xls.parse("intensities_1").reset_index()
         self.I1.set_index(["id_section", "vehicle"], inplace=True)
 
-        # assign core variables
         self._assign_core_variables()
+
+
+    def replace_intensities(self, df_int_0, df_int_1):
+        if self.verbose:
+            print("Replacing intensities...")
+        self.I0 = df_int_0
+        self.I1 = df_int_1
+
+
+    def replace_velocities(self, df_vel_0, df_vel_1):
+        if self.verbose:
+            print("Replacing velocities...")
+        self.V0 = df_vel_0
+        self.V1 = df_vel_1
 
 
 #    def read_project_inputs_csv(self,
@@ -178,20 +201,6 @@ class RoadCBA(ParamContainer):
 #            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 0)].index
 #        self.secs_new = \
 #            self.RP[(self.RP.variant_0 == 0) & (self.RP.variant_1 == 1)].index
-
-
-    def replace_intensities(self, df_int_0, df_int_1):
-        if self.verbose:
-            print("Replacing intensities...")
-        self.I0 = df_int_0
-        self.I1 = df_int_1
-
-
-    def replace_velocities(self, df_vel_0, df_vel_1):
-        if self.verbose:
-            print("Replacing velocities...")
-        self.V0 = df_vel_0
-        self.V1 = df_vel_1
 
 
 #    def read_velocities_csv(self, csv_vel_0, csv_vel_1, verbose=False):
@@ -237,13 +246,21 @@ class RoadCBA(ParamContainer):
             "slope_stabilisation", "retaining_walls", "noise_barriers",\
             "safety_features", "supervision", "planning_design"]
         assert self.C_fin is not None, "CAPEX not defined."
-        assert set(self.C_fin.index) == set(capex_idx), "Index of CAPEX not correct."
+        assert set(self.C_fin.index) == set(capex_idx), \
+            "Index of CAPEX not correct."
 
         rp_cols = ["name", "variant_0", "variant_1", "length", \
             "length_bridges", "length_tunnels", "category", "lanes", \
             "environment", "width", "layout", "toll_sections"]
         assert self.RP is not None, "Road parameters not defined."
-        assert set(self.RP.columns) == set(rp_cols), "Columns of road parameters not correct."
+        assert set(self.RP.columns) == set(rp_cols), \
+            "Columns of road parameters not correct."
+
+
+    def _verify_param_integrity(self):
+        """Verify all the relevant parameter frames contain 
+        correct columns and indices"""
+        pass
 
 
     # =====
@@ -376,7 +393,7 @@ class RoadCBA(ParamContainer):
 
 
     def _compute_toll(self):
-        pass
+        raise NotImplementedError()
 
 
     # =====
@@ -390,7 +407,7 @@ class RoadCBA(ParamContainer):
         for b in ["c_op", "toll_op", \
             "vtts", "voc", "c_fuel", "c_acc", "c_em", "noise"]:
             if self.verbose:
-                print("Creating: %s" % b)
+                print("    Creating: %s" % b)
             self.UC[b] = \
                 pd.DataFrame(columns=self.yrs, index=self.df_clean[b].index)
             self.UC[b][self.yr_i] = self.df_clean[b].value
@@ -415,25 +432,9 @@ class RoadCBA(ParamContainer):
         self.UC[b] = self.UC[b].T
 
     
-#    def _create_unit_cost_opex_matrix(self, verbose=False):
-#        if verbose:
-#            print("Creating time matrix for OPEX...")
-#        c = "c_op"
-#
-#        self.UC[c] = \
-#            pd.DataFrame(columns=self.yrs, index=self.df_clean[c].index)
-#
-#        self.UC[c][self.yr_i] = self.df_clean[c].value
-#        for yr in self.yrs[1:]:
-#            self.UC[c][yr] = \
-#                self.UC[c][self.yr_i]# * self.cpi.loc[yr, "cpi_index"]
-#        
-#        self.UC[c] = self.UC[c].round(2)
-
-
     def _create_unit_cost_opex_mask(self):
-        """Compose a time matrix of zeros and ones indicating if the
-        maintanance has to be performed in a given year."""
+        """Compose a time matrix of zeros and ones indicating 
+        if maintanance has to be performed in a given year."""
         # variant 0
         mask0 = pd.DataFrame(0, \
             index=self.df_clean["c_op"].index, columns=self.yrs)
@@ -491,19 +492,38 @@ class RoadCBA(ParamContainer):
             columns=self.yrs, index=rfuel.index)
 
 
+    # =====
+    # Functions to compute economic benefits
+    # =====
+    def economic_analysis(self):
+        """Wrapping method for the overall computation
+        of costs, benefits and overall indicators (ENPV, ERR, BCR)."""
+        self.prepare_parameters()
+        self.compute_costs_benefits()
+        self.compute_economic_indicators()
+
+
     def compute_costs_benefits(self):
         """Compute financial and economic costs and benefits"""
+        self._verify_input_integrity()
+        self._verify_param_integrity()
+
         # unit costs
+        if self.verbose:
+            print("Preparing unit values...")
         self._create_unit_cost_matrix()
-#        self._create_unit_cost_opex_matrix()
         self._create_unit_cost_opex_mask()
 
         # costs
+        if self.verbose:
+            print("Computing costs...")
         self.compute_capex()
         self.compute_opex()
+        self.compute_residual_value()
 
         # benefits
-        self.compute_residual_value()
+        if self.verbose:
+            print("Computing benefits...")
 
         self._create_length_matrix()
         self._compute_travel_time_matrix()
@@ -519,11 +539,12 @@ class RoadCBA(ParamContainer):
         self._compute_noise()
 
 
-    # =====
-    # Functions to compute economic benefits
-    # =====
-    def economic_analysis(self):
+    def compute_economic_indicators(self):
         """Perform economic analysis"""
+        # ADD FUNCTION TO VERIFY IF BENEFITS ARE COMPUTED
+
+        if self.verbose:
+            print("Computing ENPV, ERR, BCR...")
         self.df_eco = pd.DataFrame(self.NB).T
         self.df_eco = pd.concat(\
             [-pd.DataFrame(self.NC).T, pd.DataFrame(self.NB).T],\
@@ -558,10 +579,8 @@ class RoadCBA(ParamContainer):
         dum = pd.DataFrame(1, index=pd.MultiIndex.from_product(\
             [self.L.index, self.UC[b].index]), columns=self.yrs)
         dum.index.names = ["id_section", "vehicle"]
-        self.B0[b] = ((self.UC[b] * dum) * self.L).loc[self.secs_0] * \
-            self.I0 * DAYS_YEAR  # REMOVE PART WITH loc
-        self.B1[b] = ((self.UC[b] * dum) * self.L).loc[self.secs_1] * \
-            self.I1 * DAYS_YEAR  # REMOVE PART WITH loc
+        self.B0[b] = ((self.UC[b] * dum) * self.L) * self.I0 * DAYS_YEAR
+        self.B1[b] = ((self.UC[b] * dum) * self.L) * self.I1 * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
@@ -623,8 +642,9 @@ class RoadCBA(ParamContainer):
 
     def _compute_fuel_cost(self):
         b = "fuel"
-        self.B0[b] = (self.UC["c_fuel"] * self.RF) * (self.QF0 * self.I0) * DAYS_YEAR
-        self.B1[b] = (self.UC["c_fuel"] * self.RF) * (self.QF1 * self.I1) * DAYS_YEAR
+        c = "c_fuel"
+        self.B0[b] = (self.UC[c] * self.RF) * (self.QF0 * self.I0) * DAYS_YEAR
+        self.B1[b] = (self.UC[c] * self.RF) * (self.QF1 * self.I1) * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
@@ -657,7 +677,7 @@ class RoadCBA(ParamContainer):
         # add section ID
         UCE = UCE.reset_index().merge(self.RP.environment.reset_index(), \
             how="left", on="environment").set_index(\
-            ["id_section","environment","vehicle","fuel"]).sort_index()
+            ["id_section", "environment", "vehicle", "fuel"]).sort_index()
 
         self.B0[b] = (UCE * self.RF).reorder_levels([3, 2, 0, 1]).sort_index() \
             * (self.QF0 * self.I0) * DAYS_YEAR

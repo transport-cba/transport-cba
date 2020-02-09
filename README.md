@@ -42,6 +42,7 @@ from pycba.sample_projects import load_sample_bypass
 byp = load_sample_bypass()
 
 rcba = RoadCBA(2020, 2020, "svk")
+rcba.read_project_inputs(byp["RP"], byp["C_fin"], byp["I0"], byp["I1"], byp["V0"], byp["V1"])
 rcba.load_parameters(source="default")
 rcba.economic_analysis()
 ```

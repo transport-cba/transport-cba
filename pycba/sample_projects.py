@@ -91,7 +91,7 @@ def load_visnove():
     * Velocities in variants 0 and 1
     """
     dirn = "../examples/"
-    return pd.ExcelFile(dirn + "inputs_cba_d1_hp_ll_ds.xlsx")
+    return pd.ExcelFile(dirn + "cba_inputs_d1_hp_ll_ds.xlsx")
 
 
 def load_soroska():

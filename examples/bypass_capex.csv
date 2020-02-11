@@ -1,0 +1,12 @@
+item,category,2020,2021,2022
+land,preparation,300000,300000,300000
+pavements,construction,14000000,14000000,14000000
+bridges,construction,1500000,1500000,1500000
+tunnels,construction,0,0,0
+buildings,construction,0,0,0
+slope_stabilisation,construction,0,0,0
+retaining_walls,construction,0,0,0
+noise_barriers,construction,300000,300000,300000
+safety_features,construction,0,0,0
+supervision,construction,20000,20000,20000
+planning_design,preparation,150000,150000,150000

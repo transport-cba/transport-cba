@@ -18,7 +18,7 @@ class RoadCBA(ParamContainer):
                  period=30,
                  fin_discount_factor=0.04,
                  eco_discount_factor=0.05,
-                 currency="eur",
+                 currency="EUR",
                  verbose=False
                  ):
         """
@@ -70,6 +70,10 @@ class RoadCBA(ParamContainer):
         self.T1 = None
         self.I0 = None
         self.I1 = None
+
+        self.RF = None
+        self.QF0 = None
+        self.QF1 = None
 
         self.UC = {}        # unit costs
         self.B0 = {}        # benefits in 0th variant
@@ -315,12 +319,17 @@ class RoadCBA(ParamContainer):
         """Removing columns and squeezing investment expenses
         in years before the start into the first year
         of the economic period"""
+
         if "category" in self.C_fin.columns:
             self.C_fin.drop(columns="category", inplace=True)
         if "category" in self.C_fin.index.names:
             self.C_fin = self.C_fin.reset_index("category")\
                 .drop(columns="category")
+        if "total" in self.C_fin.columns:
+            self.C_fin.drop(columns="total", inplace=True)
         self.C_fin.columns = self.C_fin.columns.astype(int)
+
+        self.C_fin.fillna(0, inplace=True)
 
         # collect investment before the first year
         capex_yrs = self.C_fin.columns
@@ -397,6 +406,8 @@ class RoadCBA(ParamContainer):
         """Create a dataframe of operation costs (OPEX)."""
         if self.verbose:
             print("Computing OPEX...")
+
+        assert bool(self.UC) == True, "Unit costs not computed."
 
         UC = self.UC["c_op"].copy()
 
@@ -553,6 +564,8 @@ class RoadCBA(ParamContainer):
 
     def _create_length_matrix(self):
         """Create the matrix of lengs with years as columns"""
+        if self.verbose:
+            print("Creating length matrix...")
         self.L = pd.DataFrame(\
             np.outer(self.RP.length, np.ones_like(self.yrs)), \
             columns=self.yrs, index=self.RP.index)
@@ -560,11 +573,16 @@ class RoadCBA(ParamContainer):
 
     def _compute_travel_time_matrix(self):
         """Compute travel time by road section and vehicle type"""
+        if self.verbose:
+            print("Creating matrices of travel times...")
+        assert self.L is not None, "Compute length matrix first."
         self.T0 = (self.L / self.V0).replace([np.inf, -np.inf], 0.0)
-        self.T1 = (self.L * 1.0 / self.V1).replace([np.inf, -np.inf], 0.0)
+        self.T1 = (self.L / self.V1).replace([np.inf, -np.inf], 0.0)
 
 
     def _create_fuel_ratio_matrix(self):
+        if self.verbose:
+            print("Creating matrix of fuel ratios by vehicle...")
         rfuel = self.df_clean["r_fuel"].ratio.sort_index()
         self.RF = pd.DataFrame(repmat(rfuel, self.N_yr, 1).T, \
             columns=self.yrs, index=rfuel.index)
@@ -621,7 +639,7 @@ class RoadCBA(ParamContainer):
 
     def compute_economic_indicators(self):
         """Perform economic analysis"""
-        # ADD FUNCTION TO VERIFY IF BENEFITS ARE COMPUTED
+        assert self.NB is not None, "Compute economic benefits first."
 
         if self.verbose:
             print("\nComputing ENPV, ERR, BCR...")
@@ -640,7 +658,7 @@ class RoadCBA(ParamContainer):
         self.EBCR = \
             self.df_enpv.loc["benefit"].sum() / -self.df_enpv.loc["cost"].sum()
 
-        print("ENPV: %.2f M" % (self.ENPV / 1e6))
+        print("ENPV: %.2f M %s" % (self.ENPV / 1e6, self.currency.upper()))
         print("ERR : %.2f %%" % (self.ERR * 100))
         print("BCR : %.2f" % self.EBCR)
 
@@ -650,6 +668,9 @@ class RoadCBA(ParamContainer):
         in the construction years"""
         if self.verbose:
             print("    Computing VTTS...")
+        assert self.T0 is not None, "Compute travel time first."
+        assert self.T1 is not None, "Compute travel time first."
+
         b = "vtts"
         self.B0[b] = self.UC[b] * self.T0 * self.I0 * DAYS_YEAR
         self.B1[b] = self.UC[b] * self.T1 * self.I1 * DAYS_YEAR
@@ -657,8 +678,11 @@ class RoadCBA(ParamContainer):
 
 
     def _compute_voc(self):
+        assert self.L is not None, "Compute length matrix first."
         if self.verbose:
             print("    Computing VOC...")
+        assert self.L is not None, "Compute length matrix first."
+
         b = "voc"
         dum = pd.DataFrame(1, index=pd.MultiIndex.from_product(\
             [self.L.index, self.UC[b].index]), columns=self.yrs)
@@ -669,8 +693,11 @@ class RoadCBA(ParamContainer):
 
 
     def _compute_accidents(self):
+        assert self.L is not None, "Compute length matrix first."
         if self.verbose:
             print("    Computing accidents...")
+        assert self.L is not None, "Compute length matrix first."
+
         b = "acc"
         scale = 1e-8
         LL = self.L.merge(\
@@ -694,6 +721,8 @@ class RoadCBA(ParamContainer):
         """Compute the consumption by section, vehicle and fuel type"""
         if self.verbose:
             print("    Computing fuel consumption...")
+        assert self.L is not None, "Compute length matrix first."
+
         # polynomial coefficients and consumption function
         def vel2cons(c, v):
             """Convert velocity in km/h to fuel consumption in
@@ -731,6 +760,10 @@ class RoadCBA(ParamContainer):
     def _compute_fuel_cost(self):
         if self.verbose:
             print("    Computing fuel cost...")
+        assert self.RF is not None, "Compute matrix of fuel ratios (RF) first."
+        assert self.QF0 is not None, "Compute matrix of fuel consumption (QF0) first."
+        assert self.QF1 is not None, "Compute matrix of fuel consumption (QF1) first."
+
         b = "fuel"
         c = "c_fuel"
         self.B0[b] = (self.UC[c] * self.RF) * (self.QF0 * self.I0) * DAYS_YEAR
@@ -741,6 +774,9 @@ class RoadCBA(ParamContainer):
     def _compute_greenhouse(self):
         if self.verbose:
             print("    Computing greenhouse gases...")
+        assert self.RF is not None, "Compute matrix of fuel ratios (RF) first."
+        assert self.QF0 is not None, "Compute matrix of fuel consumption (QF0) first."
+        assert self.QF1 is not None, "Compute matrix of fuel consumption (QF1) first."
         b = "gg"
         scale = 1e-6
 
@@ -757,6 +793,9 @@ class RoadCBA(ParamContainer):
     def _compute_emissions(self):
         if self.verbose:
             print("    Computing emissions...")
+        assert self.RF is not None, "Compute matrix of fuel ratios (RF) first."
+        assert self.QF0 is not None, "Compute matrix of fuel consumption (QF0) first."
+        assert self.QF1 is not None, "Compute matrix of fuel consumption (QF1) first."
         b = "em"
         scale = 1e-6
         RE = pd.DataFrame(repmat(self.df_clean["r_em"].value, self.N_yr, 1).T, 
@@ -783,6 +822,8 @@ class RoadCBA(ParamContainer):
     def _compute_noise(self):
         if self.verbose:
             print("    Computing noise...")
+        assert self.L is not None, "Compute length matrix first."
+
         b = "noise"
         scale = 1e-3
         L = self.L.reset_index().merge(self.RP.environment.reset_index())

@@ -49,9 +49,9 @@ rcba.economic_analysis()
 
 Output (values might differ):
 ```
-ENPV: -41.24M
-ERR : -7.07 %
-BCR : 0.09
+ENPV: 2.92 M EUR
+ERR : 5.54 %
+BCR : 1.07
 ```
 
 

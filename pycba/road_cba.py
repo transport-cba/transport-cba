@@ -71,9 +71,9 @@ class RoadCBA(ParamContainer):
         self.I0 = None
         self.I1 = None
 
-        self.RF = None
-        self.QF0 = None
-        self.QF1 = None
+        self.RF = None      # ratio of fuel types
+        self.QF0 = None     # quantity of fuel burnt on a section in variant 0
+        self.QF1 = None     # quantity of fuel burnt on a section in variant 1
 
         self.UC = {}        # unit costs
         self.B0 = {}        # benefits in 0th variant
@@ -118,7 +118,8 @@ class RoadCBA(ParamContainer):
             self.N_yr_op = self.N_yr - self.N_yr_bld
             self.yrs_op = \
                 np.arange(self.yr_i + self.N_yr_bld, self.yr_i + self.N_yr)
-        
+
+            self.secs = self.RP.index
             self.secs_0 = self.RP[self.RP.variant_0 == 1].index
             self.secs_1 = self.RP[self.RP.variant_1 == 1].index
             self.secs_old = \
@@ -410,6 +411,7 @@ class RoadCBA(ParamContainer):
         assert bool(self.UC) == True, "Unit costs not computed."
 
         UC = self.UC["c_op"].copy()
+        lvl_order = ["id_section", "operation_type", "item"]
 
         # create area matrix
         def define_area(x):
@@ -439,11 +441,11 @@ class RoadCBA(ParamContainer):
         
         # summary
         self.O0_fin = (RA0 * (UC * self.mask0)).dropna().droplevel(\
-            ["category", "area_type"]).reorder_levels([0, 2, 1]).sort_index()
+            ["category", "area_type"]).reorder_levels(lvl_order).sort_index()
         
         # variant 1
-        O1_old = self.O0_fin.loc[self.secs_old]
-        O1_repl = self.O0_fin.loc[self.secs_repl]
+        O1_old = self.O0_fin.loc[self.secs_old].copy()
+        O1_repl = self.O0_fin.loc[self.secs_repl].copy()
         if not O1_repl.empty:
             O1_repl[self.yrs_op] = 0.0
         
@@ -465,7 +467,7 @@ class RoadCBA(ParamContainer):
         
         # summary
         O1_new = (RA1 * (UC * self.mask1)).dropna().droplevel(\
-            ["category", "area_type"]).reorder_levels([0, 2, 1]).sort_index()
+            ["category", "area_type"]).reorder_levels(lvl_order).sort_index()
         self.O1_fin = pd.concat([O1_old, O1_repl, O1_new]).sort_index()
         
         # economic values
@@ -514,7 +516,7 @@ class RoadCBA(ParamContainer):
                 self.UC[b] = self.UC[b].sort_index().round(2)
 
         # greenhouse unit cost computed separately
-        b = "c_gg"
+        b = "c_ghg"
         self.UC[b] = \
             pd.DataFrame(self.df_clean[b].loc[self.yr_i:self.yr_f, "value"])
         self.UC[b].columns = ["co2eq"] 
@@ -524,6 +526,7 @@ class RoadCBA(ParamContainer):
     def _create_unit_cost_opex_mask(self):
         """Compose a time matrix of zeros and ones indicating 
         if maintanance has to be performed in a given year."""
+        lvl_order = ["category", "operation_type", "item"]
         # variant 0
         mask0 = pd.DataFrame(0, \
             index=self.df_clean["c_op"].index, columns=self.yrs)
@@ -539,8 +542,7 @@ class RoadCBA(ParamContainer):
                         v[i] = 1
                 mask0.loc[itm] = v
         
-        self.mask0 = mask0.reorder_levels(\
-            ["category", "operation_type", "item"]).sort_index()
+        self.mask0 = mask0.reorder_levels(lvl_order).sort_index()
         
         # variant 1
         mask1 = pd.DataFrame(0, \
@@ -558,8 +560,7 @@ class RoadCBA(ParamContainer):
                 mask1.loc[itm] = v
         
         mask1 = pd.DataFrame(mask1, columns=self.yrs).fillna(0).astype(int)
-        self.mask1 = mask1.reorder_levels(\
-            ["category", "operation_type", "item"]).sort_index()
+        self.mask1 = mask1.reorder_levels(lvl_order).sort_index()
 
 
     def _create_length_matrix(self):
@@ -576,6 +577,7 @@ class RoadCBA(ParamContainer):
         if self.verbose:
             print("Creating matrices of travel times...")
         assert self.L is not None, "Compute length matrix first."
+
         self.T0 = (self.L / self.V0).replace([np.inf, -np.inf], 0.0)
         self.T1 = (self.L / self.V1).replace([np.inf, -np.inf], 0.0)
 
@@ -709,7 +711,7 @@ class RoadCBA(ParamContainer):
         LL.columns = LL.columns.astype(int)
 
         UCA = (LL * self.UC["c_acc"] * scale)\
-            .droplevel(["layout","lanes","category","environment"])\
+            .droplevel(["layout", "lanes", "category", "environment"])\
             .dropna(subset=[self.yr_i]).sort_index()
 
         self.B0[b] = UCA * self.I0 * DAYS_YEAR
@@ -731,7 +733,7 @@ class RoadCBA(ParamContainer):
 
         # length matrix with appropriate division of fuel/vehicle types
         dum = pd.DataFrame(1, index=pd.MultiIndex.from_product(\
-            [self.secs_1, self.veh_types]), columns=self.yrs)
+            [self.secs, self.veh_types]), columns=self.yrs)
         dum.index.names = ["id_section", "vehicle"]
         L = self.L * dum
         
@@ -777,13 +779,12 @@ class RoadCBA(ParamContainer):
         assert self.RF is not None, "Compute matrix of fuel ratios (RF) first."
         assert self.QF0 is not None, "Compute matrix of fuel consumption (QF0) first."
         assert self.QF1 is not None, "Compute matrix of fuel consumption (QF1) first."
-        b = "gg"
-        scale = 1e-6
+        b = "ghg"
 
         # UCG: unit cost of greenhouse gases in EUR/kg(fuel)
         UCG = pd.DataFrame(\
-            np.outer(self.df_clean["r_gg"].values, self.UC["c_gg"].values),\
-            index=self.df_clean["r_gg"].index, columns=self.yrs) * scale
+            np.outer(self.df_clean["r_ghg"].values, self.UC["c_ghg"].values),\
+            index=self.df_clean["r_ghg"].index, columns=self.yrs)
         
         self.B0[b] = (UCG * self.RF) * (self.QF0 * self.I0) * DAYS_YEAR
         self.B1[b] = (UCG * self.RF) * (self.QF1 * self.I1) * DAYS_YEAR
@@ -796,13 +797,13 @@ class RoadCBA(ParamContainer):
         assert self.RF is not None, "Compute matrix of fuel ratios (RF) first."
         assert self.QF0 is not None, "Compute matrix of fuel consumption (QF0) first."
         assert self.QF1 is not None, "Compute matrix of fuel consumption (QF1) first."
+        
         b = "em"
-        scale = 1e-6
         RE = pd.DataFrame(repmat(self.df_clean["r_em"].value, self.N_yr, 1).T, 
                   columns=self.yrs, index=self.df_clean["r_em"].index)
 
         # UCE: unit cost of emissions in EUR/kg(fuel)
-        UCE = RE * self.UC["c_em"] * scale
+        UCE = RE * self.UC["c_em"]
         UCE = UCE.groupby(["fuel","vehicle","environment"]).sum()
         UCE = UCE.reset_index()\
             .set_index(["environment","vehicle","fuel"]).sort_index()
@@ -811,10 +812,11 @@ class RoadCBA(ParamContainer):
         UCE = UCE.reset_index().merge(self.RP.environment.reset_index(), \
             how="left", on="environment").set_index(\
             ["id_section", "environment", "vehicle", "fuel"]).sort_index()
-
-        self.B0[b] = (UCE * self.RF).reorder_levels([3, 2, 0, 1]).sort_index() \
+        
+        lvl_order = ["id_section", "vehicle", "fuel", "environment"]
+        self.B0[b] = (UCE * self.RF).reorder_levels(lvl_order).sort_index() \
             * (self.QF0 * self.I0) * DAYS_YEAR
-        self.B1[b] = (UCE * self.RF).reorder_levels([3, 2, 0, 1]).sort_index() \
+        self.B1[b] = (UCE * self.RF).reorder_levels(lvl_order).sort_index() \
             * (self.QF1 * self.I1) * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
@@ -825,12 +827,11 @@ class RoadCBA(ParamContainer):
         assert self.L is not None, "Compute length matrix first."
 
         b = "noise"
-        scale = 1e-3
         L = self.L.reset_index().merge(self.RP.environment.reset_index())
         L = L.set_index(["id_section", "environment"])
         
         # CN: cost of noise in EUR
-        CN = (self.UC[b] * L * scale).reorder_levels(\
+        CN = (self.UC[b] * L).reorder_levels(\
             ["id_section", "environment", "vehicle"]).sort_index()
 
         self.B0[b] = CN * self.I0 * DAYS_YEAR

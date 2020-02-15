@@ -21,5 +21,5 @@ setuptools.setup(
     ],
     python_requires='>=3',
     package_data={"": ["examples/*.csv", "parameters/*/*.csv"]},
-    install_requires=["numpy>=1.16, <2", "pandas>=0.24, <0.3"],
+    install_requires=["numpy>=1.16, <2", "pandas>=0.24, <1"],
 )

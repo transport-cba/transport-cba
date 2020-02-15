@@ -20,6 +20,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.5',
-    data_files=[("examples", ["examples/*.csv"]),
-        ("parameters", ["parameters/*"])],
+    package_data={"": ["examples/*.csv", "parametes/*/*.csv"]},
+#    data_files=[("examples", ["examples/*.csv"]),
+#        ("parameters", ["parameters/*"])],
 )

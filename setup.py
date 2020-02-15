@@ -8,10 +8,11 @@ setuptools.setup(
     version="0.0.1",
     author="Peter Vanya",
     author_email="peter.vanya@gmail.com",
-    description="A Python package for cost-benefit analysis of roads",
+    description="A Python package for cost-benefit analysis of infrastructure projects",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/petervanya/pycba",
+    keywords="cost benefit analysis",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -19,4 +20,6 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.5',
+    data_files=[("examples", ["examples/*.csv"]),
+        ("parameters", ["parameters/*"])],
 )

@@ -7,7 +7,7 @@ import os
 
 def load_sample_bypass():
     """Load a sample bypass from prepared csv's"""
-    dirn = os.path.dirname(__file__) + "/../examples/"
+    dirn = os.path.dirname(__file__) + "/examples/"
     
     d = {}
     d["RP"] = pd.read_csv(dirn + "bypass_road_params.csv", index_col=0)
@@ -91,7 +91,7 @@ def load_visnove():
     * Intensities in variants 0 and 1
     * Velocities in variants 0 and 1
     """
-    dirn = os.path.dirname(__file__) + "/../examples/"
+    dirn = os.path.dirname(__file__) + "/examples/"
     return pd.ExcelFile(dirn + "cba_inputs_d1_hp_ll_ds.xlsx")
 
 

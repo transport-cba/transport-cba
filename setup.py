@@ -19,8 +19,7 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.5',
+    python_requires='>=3',
     package_data={"": ["examples/*.csv", "parameters/*/*.csv"]},
-#    data_files=[("examples", ["examples/*.csv"]),
-#        ("parameters", ["parameters/*"])],
+    install_requires=["numpy>=1.16, <2", "pandas>=0.24, <0.3"],
 )

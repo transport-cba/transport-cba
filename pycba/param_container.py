@@ -19,7 +19,7 @@ class ParamContainer(object):
             raise ValueError("Data for country '%s' not available." % country)
         
         self.country = country
-        self.dirn = os.path.dirname(__file__) + "/../files/%s/" % self.country
+        self.dirn = os.path.dirname(__file__) + "/parameters/%s/" % self.country
         self.pl = price_level
         self.verbose = verbose
         
@@ -30,7 +30,7 @@ class ParamContainer(object):
 
 
     def read_raw_params(self):
-        """Read in all the relevant parameter files"""
+        """Load all parameter dataframes"""
         if self.verbose:
             print("Reading CBA parameters...")
 

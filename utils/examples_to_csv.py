@@ -8,7 +8,7 @@ in the production folder.
 import pandas as pd
 
 
-dirn = "../examples/"
+dirn = "../pycba/examples/"
 
 fname = dirn + "example_bypass.xlsx"
 xls = pd.ExcelFile(fname)

@@ -1,11 +1,11 @@
 item,lifetime,replacement_cost_ratio
 land,inf,
-pavements,30.0,0.75
-pavements_concrete,30.0,0.75
+pavements asphalt,30.0,0.75
+pavements concrete,30.0,0.75
 bridges,100.0,1.0
 tunnels,100.0,1.0
 buildings,50.0,1.0
-slope_stabilisation,20.0,0.75
-retaining_walls,30.0,0.75
-noise_barriers,20.0,0.5
-safety_features,15.0,1.0
+slope stabilisation,20.0,0.75
+retaining walls,30.0,0.75
+noise barriers,20.0,0.5
+safety features,15.0,1.0

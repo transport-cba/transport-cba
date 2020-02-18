@@ -25,8 +25,6 @@ class ParamContainer(object):
         
         self.df_raw = {}
         self.df_clean = {}
-#        self.TM_fin = {}
-#        self.TM_eco = {}
 
 
     def read_raw_params(self):
@@ -149,7 +147,7 @@ class ParamContainer(object):
                 * self.df_clean[c].price_level\
                 .map(lambda x: self.cpi.loc[x].cpi_index)
             self.df_clean[c].drop(columns=["price_level"], inplace=True)
-            self.df_clean[c]["value"] = self.df_clean[c].value.round(3)
+            self.df_clean[c]["value"] = self.df_clean[c].value#.round(3)
 
 
     def wrangle_params(self):

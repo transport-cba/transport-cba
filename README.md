@@ -39,12 +39,14 @@ Options to load project inputs:
 from pycba import RoadCBA
 from pycba.sample_projects import load_sample_bypass
 
-byp = load_sample_bypass()
+b = load_sample_bypass()
 
 rcba = RoadCBA(2020, 2020, "svk")
-rcba.read_project_inputs(byp["RP"], byp["C_fin"], byp["I0"], byp["I1"], byp["V0"], byp["V1"])
+rcba.read_project_inputs(b["RP"], b["C_fin"], b["I0"], b["I1"], b["V0"], b["V1"])
 rcba.load_parameters(source="default")
 rcba.economic_analysis()
+
+rcba.print_economic_indicators()
 ```
 
 Output (values might differ):

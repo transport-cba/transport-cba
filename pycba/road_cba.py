@@ -600,7 +600,7 @@ class RoadCBA(ParamContainer):
         self.prepare_parameters()
         self.compute_costs_benefits()
         self.compute_economic_indicators()
-        print("Time: %.2f s." % (time.time() - ti))
+        print("Done. Time: %.2f s." % (time.time() - ti))
 
 
     def compute_costs_benefits(self):
@@ -657,9 +657,11 @@ class RoadCBA(ParamContainer):
 
         self.ENPV = np.npv(self.r_eco, self.df_eco.sum())
         self.ERR = np.irr(self.df_eco.sum())
-        self.EBCR = \
-            self.df_enpv.loc["benefit"].sum() / -self.df_enpv.loc["cost"].sum()
+        self.EBCR = (self.df_enpv.loc["benefit"].sum() \
+            / -self.df_enpv.loc["cost"].sum()).value
 
+    
+    def print_economic_indicators(self):
         print("ENPV: %.2f M %s" % (self.ENPV / 1e6, self.currency.upper()))
         print("ERR : %.2f %%" % (self.ERR * 100))
         print("BCR : %.2f" % self.EBCR)

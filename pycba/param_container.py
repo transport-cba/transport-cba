@@ -103,7 +103,7 @@ class ParamContainer(object):
         # backward
         for i in range(ix-1, -1, -1):
             self.cpi.iloc[i]["cpi_index"] = \
-                self.cpi.iloc[i+1].cpi_index * (self.cpi.iloc[i].cpi + 1.0)
+                self.cpi.iloc[i+1].cpi_index / (self.cpi.iloc[i].cpi + 1.0)
         
         # forward
         for i in range(ix+1, len(self.cpi)):

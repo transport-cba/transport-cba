@@ -81,7 +81,7 @@ class RoadCBA(ParamContainer):
         self.NB = {}        # net benefits
         self.NC = {}        # net costs
 
-        super().__init__(self.country, self.yr_i, verbose=self.verbose)
+        super().__init__(self.country, self.pl, verbose=self.verbose)
 
 
     # =====
@@ -196,7 +196,8 @@ class RoadCBA(ParamContainer):
             print("Reading project inputs from xls/xlsx...")
         xls = pd.ExcelFile(file_xls)
         self.RP = xls.parse("road_params", index_col=0)
-        self.C_fin = xls.parse("capex", index_col=0)
+        self.C_fin = xls.parse("capex").reset_index(drop=True)
+        self.C_fin.set_index(['item', 'category'], inplace=True)
         self.I0 = xls.parse("intensities_0").reset_index()
         self.I0.set_index(["id_section", "vehicle"], inplace=True)
         self.I1 = xls.parse("intensities_1").reset_index()

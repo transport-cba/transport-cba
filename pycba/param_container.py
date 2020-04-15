@@ -108,7 +108,7 @@ class ParamContainer(object):
         # forward
         for i in range(ix+1, len(self.cpi)):
             self.cpi.iloc[i]["cpi_index"] = \
-                self.cpi.iloc[i-1].cpi_index * (self.cpi.iloc[i-1].cpi + 1.0)
+                self.cpi.iloc[i-1].cpi_index / (self.cpi.iloc[i-1].cpi + 1.0)
 
 
     def clean_params(self):

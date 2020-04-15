@@ -81,7 +81,7 @@ class RoadCBA(ParamContainer):
         self.NB = {}        # net benefits
         self.NC = {}        # net costs
 
-        super().__init__(self.country, self.yr_i, verbose=self.verbose)
+        super().__init__(self.country, self.pl, verbose=self.verbose)
 
 
     # =====
@@ -196,14 +196,15 @@ class RoadCBA(ParamContainer):
             print("Reading project inputs from xls/xlsx...")
         xls = pd.ExcelFile(file_xls)
         self.RP = xls.parse("road_params", index_col=0)
-        self.C_fin = xls.parse("capex", index_col=0)
-        self.I0 = xls.parse("intensities_0").reset_index()
+        self.C_fin = xls.parse("capex").reset_index(drop=True)
+        self.C_fin.set_index(['item', 'category'], inplace=True)
+        self.I0 = xls.parse("intensities_0").reset_index(drop=True)
         self.I0.set_index(["id_section", "vehicle"], inplace=True)
-        self.I1 = xls.parse("intensities_1").reset_index()
+        self.I1 = xls.parse("intensities_1").reset_index(drop=True)
         self.I1.set_index(["id_section", "vehicle"], inplace=True)
-        self.V0 = xls.parse("velocities_0").reset_index()
+        self.V0 = xls.parse("velocities_0").reset_index(drop=True)
         self.V0.set_index(["id_section", "vehicle"], inplace=True)
-        self.V1 = xls.parse("velocities_1").reset_index()
+        self.V1 = xls.parse("velocities_1").reset_index(drop=True)
         self.V1.set_index(["id_section", "vehicle"], inplace=True)
 
         self._assign_core_variables()
@@ -503,11 +504,13 @@ class RoadCBA(ParamContainer):
                 pd.DataFrame(columns=self.yrs, index=self.df_clean[b].index)
             self.UC[b][self.yr_i] = self.df_clean[b].value
             for yr in self.yrs[1:]:
+                # set to the value of the preceding year
                 self.UC[b][yr] = \
-                    self.UC[b][self.yr_i]# * self.cpi.loc[yr, "cpi_index"]
+                    self.UC[b][yr-1]# * self.cpi.loc[yr, "cpi_index"]
+                # adjust with gdp growth if required
                 if "gdp_growth_adjustment" in self.df_clean[b].columns:
                     self.UC[b][yr] = self.UC[b][yr] \
-                    * (1.0 + self.gdp_growth.loc[yr].gdp_growth \
+                    * (1.0 + self.gdp_growth.loc[yr-1].gdp_growth \
                     * self.df_clean[b].gdp_growth_adjustment)
 
             if b in ["noise"]:

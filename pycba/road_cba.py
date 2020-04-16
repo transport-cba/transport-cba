@@ -19,6 +19,7 @@ class RoadCBA(ParamContainer):
                  fin_discount_factor=0.04,
                  eco_discount_factor=0.05,
                  currency="EUR",
+                 economic_prognosis='cba_guide_2017_PV',
                  verbose=False
                  ):
         """
@@ -30,6 +31,7 @@ class RoadCBA(ParamContainer):
         - period: number of years for the economic analysis
         - fin_discount_factor: discount factor for financial analysis
         - eco_discount_factor: discount factor for economic analysis
+        - economic_prognosis: version of economic prognosis by IFP used for GDP growth forecast
 
         """
         self.yr_i = init_year
@@ -53,6 +55,8 @@ class RoadCBA(ParamContainer):
         self.envs = ENVIRONMENTS
 
         self.verbose = verbose
+        
+        self.economic_prognosis = economic_prognosis
 
         # define empty frames
         self.RP = None       # road parameters
@@ -81,7 +85,7 @@ class RoadCBA(ParamContainer):
         self.NB = {}        # net benefits
         self.NC = {}        # net costs
 
-        super().__init__(self.country, self.pl, verbose=self.verbose)
+        super().__init__(country=self.country, price_level=self.pl, verbose=self.verbose,  economic_prognosis=self.economic_prognosis)
 
 
     # =====

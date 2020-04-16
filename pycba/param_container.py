@@ -4,6 +4,7 @@ import os
 
 
 available_countries = ["svk"]
+economic_prognoses = ['cba_guide_2017', 'cba_guide_2017_PV', 'most_recent']
 svk_params = ["gdp_growth", "cpi", "c_op", "toll_op", "res_val", \
     "c_fuel", "conv_fac", \
     "occ_p", "occ_f", "r_tp", "vtts", "voc", "fuel_coeffs", \
@@ -11,8 +12,8 @@ svk_params = ["gdp_growth", "cpi", "c_op", "toll_op", "res_val", \
 
 
 
-class ParamContainer(object):
-    def __init__(self, country, price_level, verbose=False):
+class ParamContainer(object):   
+    def __init__(self, country, price_level, verbose=False, economic_prognosis='cba_guide_2017_PV'):
         """Read in all the CBA values necessary for economic analysis
         for a given country"""
         if country not in available_countries:
@@ -22,6 +23,11 @@ class ParamContainer(object):
         self.dirn = os.path.dirname(__file__) + "/parameters/%s/" % self.country
         self.pl = price_level
         self.verbose = verbose
+        
+        if economic_prognosis.replace('_', '').isnumeric() or economic_prognosis in economic_prognoses:
+             self.economic_prognosis = economic_prognosis
+        else:
+            raise ValueError("Unrecognized option for economic prognosis '%s'." % economic_prognosis)
         
         self.df_raw = {}
         self.df_clean = {}
@@ -33,8 +39,27 @@ class ParamContainer(object):
             print("Reading CBA parameters...")
 
         # macro data
-        self.gdp_growth = pd.read_csv(self.dirn + "gdp_growth.csv", \
-            index_col="year")
+        # parse economic prognosis option
+        if self.economic_prognosis == 'cba_guide_2017_PV': 
+            # temporary option for testing compatibility
+            self.gdp_growth = pd.read_csv(self.dirn + "gdp_growth.csv", \
+                index_col="year")
+        else:
+            gdp_growth_xlsx = pd.read_excel(self.dirn + "gdp_growth.xlsx", \
+                sheet_name=None, index_col="year")
+            # filter prognosis sheets
+            prognosis_list = list(filter(lambda x: ('cba_guide' in x) \
+                or (x.replace('_', '').isnumeric()), gdp_growth_xlsx.keys()))
+            # check if available
+            if self.economic_prognosis not in prognosis_list:
+                raise ValueError("Unavailable economic prognosis '%s'." % self.economic_prognosis)
+            # make a copy
+            self.gdp_growth = gdp_growth_xlsx[self.economic_prognosis].copy()
+            # delete unused options
+            del gdp_growth_xlsx
+            
+        print("Using economic prognosis '%s'." % self.economic_prognosis)
+            
         self.cpi = pd.read_csv(self.dirn + "cpi.csv", index_col="year")
 
         # financial data

@@ -87,10 +87,10 @@ class RoadCBA(ParamContainer):
     # =====
     # Initialisation functions
     # =====
-    def load_parameters(self, source="default"):
+    def load_parameters(self, source=None):
         """Read in the CBA parameters
         Can read from a user-defined directory"""
-        if source == "default":
+        if source is None:
             super().read_raw_params()
         else:
             raise NotImplementedError("To add soon.")
@@ -143,27 +143,23 @@ class RoadCBA(ParamContainer):
         self.I0 = self.I0.loc[self.secs_0]
         self.V0 = self.V0.loc[self.secs_0]
 
-        if self.I0.columns[-1] < self.yr_f:
-            if self.verbose:
-                print("Warning: I0 not forecast until the end of period,\
+        if self.I0.columns[-1] < self.yr_f and self.verbose:
+            print("Warning: I0 not forecast until the end of period,\
                 filling by zeros.")
         self.I0 = self.I0[self.yrs].fillna(0)
 
-        if self.I1.columns[-1] < self.yr_f:
-            if self.verbose:
-                print("Warning: I0 not forecast until the end of period,\
+        if self.I1.columns[-1] < self.yr_f and self.verbose:
+            print("Warning: I0 not forecast until the end of period,\
                 filling by zeros.")
         self.I1 = self.I1[self.yrs].fillna(0)
 
-        if self.V0.columns[-1] < self.yr_f:
-            if self.verbose:
-                print("Warning: V0 not forecast until the end of period,\
+        if self.V0.columns[-1] < self.yr_f and self.verbose:
+            print("Warning: V0 not forecast until the end of period,\
                 filling by zeros.")
         self.V0 = self.V0[self.yrs].fillna(0)
 
-        if self.V1.columns[-1] < self.yr_f:
-            if self.verbose:
-                print("Warning: V0 not forecast until the end of period,\
+        if self.V1.columns[-1] < self.yr_f and self.verbose:
+            print("Warning: V0 not forecast until the end of period,\
                 filling by zeros.")
         self.V1 = self.V1[self.yrs].fillna(0)
 
@@ -191,9 +187,9 @@ class RoadCBA(ParamContainer):
     
     def read_project_inputs_xls(self, file_xls):
         assert file_xls.split(".")[-1] in ["xls", "xlsx"], \
-            "Invalid file extension. Must be xls or xlsx."
+            "Invalid file extension, expected xls or xlsx."
         if self.verbose:
-            print("Reading project inputs from xls/xlsx...")
+            print("Reading project inputs from %s..." % file_xls)
         xls = pd.ExcelFile(file_xls)
         self.RP = xls.parse("road_params", index_col=0)
         self.C_fin = xls.parse("capex", index_col=0)
@@ -283,21 +279,21 @@ class RoadCBA(ParamContainer):
     def _verify_input_integrity(self):
         int_idx = ["id_section", "vehicle"]
         assert self.I0 is not None, "I0 not defined."
-        assert self.I0.index.names == int_idx, "Index of I0 not correct."
+        assert self.I0.index.names == int_idx, "Incorrect indices of I0."
         assert self.I1 is not None, "I1 not defined."
-        assert self.I1.index.names == int_idx, "Index of I1 not correct."
+        assert self.I1.index.names == int_idx, "Incorrect indices of I1."
 
         assert self.V0 is not None, "V0 not defined."
-        assert self.V0.index.names == int_idx, "Index of V0 not correct."
+        assert self.V0.index.names == int_idx, "Incorrect indices of V0."
         assert self.V1 is not None, "V1 not defined."
-        assert self.V1.index.names == int_idx, "Index of V1 not correct."
+        assert self.V1.index.names == int_idx, "Incorrect indices of V1."
 
         rp_cols = ["name", "variant_0", "variant_1", "length", \
             "length_bridges", "length_tunnels", "category", "lanes", \
             "environment", "width", "layout", "toll_sections"]
         assert self.RP is not None, "Road parameters not defined."
         assert set(self.RP.columns) == set(rp_cols), \
-            "Columns of road parameters not correct."
+            "Incorrect columns of road parameters dataframe."
 
 #        capex_idx = ["land", "pavements", "bridges", "tunnels", "buildings",\
 #            "slope_stabilisation", "retaining_walls", "noise_barriers",\
@@ -308,7 +304,7 @@ class RoadCBA(ParamContainer):
 
 
     def _verify_param_integrity(self):
-        """Verify all the relevant parameter frames contain 
+        """Verify that all the relevant parameter frames contain 
         correct columns and indices"""
         pass
 
@@ -491,7 +487,7 @@ class RoadCBA(ParamContainer):
     # Preparation functions
     # =====
     def _create_unit_cost_matrix(self):
-        """Define the unit cost matrices for each benefit"""
+        """Define the unit cost (UC) matrices for each benefit"""
         if self.verbose:
             print("Creating time matrices for benefits...")
 
@@ -515,7 +511,7 @@ class RoadCBA(ParamContainer):
             else:
                 self.UC[b] = self.UC[b].sort_index().round(2)
 
-        # greenhouse unit cost computed separately
+        # greenhouse unit cost computed separately due to its structure
         b = "c_ghg"
         self.UC[b] = \
             pd.DataFrame(self.df_clean[b].loc[self.yr_i:self.yr_f, "value"])
@@ -728,10 +724,10 @@ class RoadCBA(ParamContainer):
         assert self.L is not None, "Compute length matrix first."
 
         # polynomial coefficients and consumption function
-        def vel2cons(c, v):
+        def vel2cons(coeffs, v):
             """Convert velocity in km/h to fuel consumption in
             kg/km via a polynomial"""
-            return np.polyval(c[::-1], v)
+            return np.polyval(coeffs[::-1], v)
 
         # length matrix with appropriate division of fuel/vehicle types
         dum = pd.DataFrame(1, index=pd.MultiIndex.from_product(\

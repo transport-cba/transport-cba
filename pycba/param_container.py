@@ -87,6 +87,7 @@ class ParamContainer(object):
     def adjust_cpi(self, infl=0.02, yr_min=2000, yr_max=2100):
         """Fill in mising values and compute cumulative inflation 
         to be able to adjust the price level"""
+        assert hasattr(self, "cpi"), "Load parameters first."
         if self.verbose:
             print("Adjusting CPI...")
 

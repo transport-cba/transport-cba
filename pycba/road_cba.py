@@ -87,28 +87,25 @@ class RoadCBA(ParamContainer):
     # =====
     # Initialisation functions
     # =====
-    def load_parameters(self, source=None):
-        """Read in the CBA parameters
-        Can read from a user-defined directory"""
+    def prepare_parameters(self, source=None):
+        """Read in CBA parameters and adjust them for furhter use.
+        Another source than the built-in one can be chosen."""
         if source is None:
             super().read_raw_params()
         else:
             raise NotImplementedError("To add soon.")
-            
 
-    def replace_parameter(self, param):
-        """Replace a specific parameter frame"""
-        raise NotImplementedError("To add soon.")
-
-
-    def prepare_parameters(self):
-        """Read in and manipulate all the CBA parameters"""
         super().adjust_cpi(yr_max=self.yr_f)
         super().clean_params()
         super().adjust_price_level()
         super().wrangle_params()
 
     
+    def replace_parameter(self, param):
+        """Replace a specific parameter frame"""
+        raise NotImplementedError("To add soon.")
+
+
     def _assign_core_variables(self):
         """After reading project inputs define years of operation
         and various arrays of sections"""
@@ -405,7 +402,7 @@ class RoadCBA(ParamContainer):
         if self.verbose:
             print("Computing OPEX...")
 
-        assert bool(self.UC) == True, "Unit costs not computed."
+        assert len(self.UC.keys()) != 0, "Create unit costs first."
 
         UC = self.UC["c_op"].copy()
         lvl_order = ["id_section", "operation_type", "item"]
@@ -437,6 +434,7 @@ class RoadCBA(ParamContainer):
             index=RA0.index, columns=self.yrs)
         
         # summary
+        assert hasattr(self, "mask0"), "Create OPEX mask first."
         self.O0_fin = (RA0 * (UC * self.mask0)).dropna().droplevel(\
             ["category", "area_type"]).reorder_levels(lvl_order).sort_index()
         
@@ -520,7 +518,7 @@ class RoadCBA(ParamContainer):
         self.UC[b] = self.UC[b].T
 
     
-    def _create_unit_cost_opex_mask(self):
+    def _create_opex_cost_mask(self):
         """Compose a time matrix of zeros and ones indicating 
         if maintanance has to be performed in a given year."""
         lvl_order = ["category", "operation_type", "item"]
@@ -609,7 +607,7 @@ class RoadCBA(ParamContainer):
         if self.verbose:
             print("Preparing unit values...")
         self._create_unit_cost_matrix()
-        self._create_unit_cost_opex_mask()
+        self._create_opex_cost_mask()
 
         # costs
         if self.verbose:

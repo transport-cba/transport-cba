@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-
+import os
 
 class GenericCBA(object):
     """Main module class.
@@ -100,6 +100,9 @@ class GenericCBA(object):
         self.ENPV = None
         self.ERR = None
         self.EBCR = None
+
+        # pycba directory
+        self.dirn = os.path.dirname(__file__)
 
     def read_parameters(self):
         raise NotImplementedError("Function read_parameters is supposed"

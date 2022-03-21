@@ -67,15 +67,50 @@ class RoadCBA(GenericRoadCBA):
 
         self.include_freight_time = include_freight_time
 
+        # parameter container
+        self.paramdir = self.dirn + '/parameters/svk/transport/OPIIv3p0/'
+        self.paramfile = self.paramdir + \
+                         "svk_road_cba_parameters_OPIIv3p0_2022.xlsx"
+        self.params_raw = {}
+        self.params_clean = {}
+
+    def run_cba(self):
+        self.read_parameters()
+        self.prepare_parameters()
+
     def read_parameters(self):
-        raise NotImplementedError("Function read_parameters is supposed "
-                                  "to be defined in the specific "
-                                  "implementation")
+        self._read_raw_parameters()
+
+    def _read_raw_parameters(self):
+        """Load all parameter dataframes"""
+        if self.verbose:
+            print("Reading CBA parameters...")
+
+        self.params_raw["res_val"] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="residual_value",
+                          index_col=0)
+
+        self.params_raw["conv_fac"] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="conversion_factors",
+                          index_col=0)
+
+    def _clean_parameters(self):
+        self.params_clean['res_val'] = self.params_raw['res_val']
+
+        # conversion factors
+        self.params_clean['conv_fac'] = self.params_raw['conv_fac']
+
+        capex_conv_fac = pd.merge(
+            self.params_clean['res_val'][['default_conversion_factor']],
+            self.params_clean['conv_fac'], how='left',
+            left_on='default_conversion_factor', right_index=True)[['value']]
+
+        self.params_clean['capex_conv_fac'] = capex_conv_fac
 
     def prepare_parameters(self):
-        raise NotImplementedError("Function prepare_parameters is supposed "
-                                  "to be defined in the specific "
-                                  "implementation")
+        self._clean_parameters()
 
     def read_project_inputs(self, df_capex):
         """
@@ -129,8 +164,18 @@ class RoadCBA(GenericRoadCBA):
         if self.verbose:
             print("Computing CAPEX...")
 
-        #
+        # add columns for all years of evaluation period
+        self.C_fin = pd.DataFrame(self.C_fin, columns=self.yrs).fillna(0)
 
+        # assign conversion factors to items of capex dataframe
+        self.cf = pd.merge(self.C_fin,
+                           self.params_clean['capex_conv_fac'],
+                           how='left',
+                           left_index=True, right_index=True)[['value']]\
+                           .fillna(self.params_clean['conv_fac'].
+                                   loc['aggregate', 'value'])['value']
+
+        self.C_eco = self.C_fin.multiply(self.cf, axis='index')
 
 
     def perform_economic_analysis(self):

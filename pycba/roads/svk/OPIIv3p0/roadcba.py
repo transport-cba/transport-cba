@@ -137,13 +137,14 @@ class RoadCBA(GenericRoadCBA):
         """
         if self.verbose:
             print("Cleaning parameters...")
-
-        # residual value
-        self.params_clean['res_val'] = self.params_raw['res_val']
-        # conversion factors
-        self.params_clean['conv_fac'] = self.params_raw['conv_fac']
-        # operation cost
-        self.params_clean['c_op'] = self.params_raw['c_op']
+        for itm in self.params_raw.keys():
+            if self.verbose:
+                print("    Cleaning: %s" % itm)
+            self.params_clean[itm] = self.params_raw[itm].copy()
+            if "nb" in self.params_clean[itm].columns:
+                self.params_clean[itm].drop(columns=["nb"], inplace=True)
+            if "unit" in self.params_clean[itm].columns:
+                self.params_clean[itm].drop(columns=["unit"], inplace=True)
 
     def _wrangle_cpi(self, infl=0.02, yr_min=2000, yr_max=2100):
         """

@@ -22,7 +22,8 @@ class RoadCBA(GenericRoadCBA):
                  eco_discount_rate,
                  currency,
                  verbose=False,
-                 include_freight_time=False):
+                 include_freight_time=False,
+                 cpi_source="newest"):
         """
         Input
         ------
@@ -66,6 +67,7 @@ class RoadCBA(GenericRoadCBA):
                          verbose=verbose)
 
         self.include_freight_time = include_freight_time
+        self.cpi_source = cpi_source
 
         # parameter container
         self.paramdir = self.dirn + '/parameters/svk/transport/OPIIv3p0/'
@@ -73,6 +75,11 @@ class RoadCBA(GenericRoadCBA):
                          "svk_road_cba_parameters_OPIIv3p0_2022.xlsx"
         self.params_raw = {}
         self.params_clean = {}
+
+        # OPIIv3p0 properties
+        self.PRICE_LEVEL_ADJUSTED = ["c_op"]
+        # self.PRICE_LEVEL_ADJUSTED = ["c_op", "toll_op",
+        #           "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]
 
     def run_cba(self):
         self.read_parameters()
@@ -86,6 +93,29 @@ class RoadCBA(GenericRoadCBA):
         if self.verbose:
             print("Reading CBA parameters...")
 
+        # economic data
+
+        # economic prognosis
+
+        # inflation (CPI)
+        # read meta information on CPI values
+        df_cpi_meta = pd.read_excel(self.paramfile,
+                                    sheet_name="cpi_meta",
+                                    index_col="key")
+
+        if self.cpi_source not in df_cpi_meta.index:
+            raise ValueError("{0!s} not available as an option for CPI."
+                             "Use on of {1!s} instead".format(self.cpi_source,
+                                                    list(df_cpi_meta.index)))
+        cpi_col = df_cpi_meta.loc[self.cpi_source, 'column']
+
+        # read CPI information from the correct source
+        self.cpi = pd.read_excel(self.paramfile,
+                                 sheet_name="cpi",
+                                 index_col=0)
+        self.cpi = self.cpi[[cpi_col]].rename(columns={cpi_col:"cpi"})
+
+        # RoadCBA specifics
         self.params_raw["res_val"] = \
             pd.read_excel(self.paramfile,
                           sheet_name="residual_value",
@@ -96,21 +126,87 @@ class RoadCBA(GenericRoadCBA):
                           sheet_name="conversion_factors",
                           index_col=0)
 
-    def _clean_parameters(self):
-        self.params_clean['res_val'] = self.params_raw['res_val']
+        self.params_raw["c_op"] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="operation_cost")
 
+    def _clean_parameters(self):
+        """
+        Incorporate scale into values.
+        Remove unimportant columns. Populate the df_clean dictionary
+        """
+        if self.verbose:
+            print("Cleaning parameters...")
+
+        # residual value
+        self.params_clean['res_val'] = self.params_raw['res_val']
         # conversion factors
         self.params_clean['conv_fac'] = self.params_raw['conv_fac']
+        # operation cost
+        self.params_clean['c_op'] = self.params_raw['c_op']
 
+    def _wrangle_cpi(self, infl=0.02, yr_min=2000, yr_max=2100):
+        """
+        Fill in missing values and compute cumulative inflation
+        to be able to adjust the price level
+        """
+
+        if self.verbose:
+            print("Wrangling CPI...")
+
+        self.cpi = self.cpi.reindex(np.arange(yr_min, yr_max + 1))
+        self.cpi["cpi"].fillna(infl, inplace=True)
+
+        # compute cumulative CPI
+        self.cpi["cpi_index"] = np.nan
+        self.cpi.loc[self.yr_pl, "cpi_index"] = 1.0
+        ix = self.cpi.index.get_loc(self.yr_pl)
+
+        # backward
+        for i in range(ix - 1, -1, -1):
+            yi = self.cpi.index[i]
+            self.cpi.loc[yi, "cpi_index"] = \
+                self.cpi.loc[yi+1, "cpi_index"] \
+                * (self.cpi.loc[yi, "cpi"] + 1.0)
+
+        # forward
+        for i in range(ix + 1, len(self.cpi)):
+            yi = self.cpi.index[i]
+            self.cpi.loc[yi, "cpi_index"] = \
+                self.cpi.loc[yi-1, "cpi_index"] / (
+                            self.cpi.loc[yi-1, "cpi"] + 1.0)
+
+    def _adjust_price_level(self):
+        """Unify the prices for one price level"""
+        if self.verbose:
+            print("Adjusting price level...")
+
+        for c in self.PRICE_LEVEL_ADJUSTED:
+            if self.verbose:
+                print("    Adjusting: %s" % c)
+            self.params_clean[c]["value"] = self.params_clean[c].value \
+                                        * self.params_clean[c].price_level \
+                                            .map(
+                lambda x: self.cpi.loc[x].cpi_index)
+            self.params_clean[c].drop(columns=["price_level"], inplace=True)
+            # self.params_clean[c]["value"] = self.params_clean[c].value
+
+    def _wrangle_parameters(self):
+        """Wrangle parameters into form suitable for computation."""
+        # TODO replace with calls to functions
+
+        # conversion factors
         capex_conv_fac = pd.merge(
             self.params_clean['res_val'][['default_conversion_factor']],
             self.params_clean['conv_fac'], how='left',
             left_on='default_conversion_factor', right_index=True)[['value']]
-
         self.params_clean['capex_conv_fac'] = capex_conv_fac
 
     def prepare_parameters(self):
         self._clean_parameters()
+        self._wrangle_cpi()
+        self._adjust_price_level()
+        self._wrangle_parameters()
 
     def read_project_inputs(self, df_capex):
         """

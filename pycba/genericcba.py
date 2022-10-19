@@ -91,6 +91,7 @@ class GenericCBA(object):
         self.O1_fin = None      # OPEX financial in 1st variant
         self.O1_eco = None      # OPEX economic in 1st variant
 
+        self.UC = {}            # unit costs
         self.B0 = {}            # benefits in 0th variant
         self.B1 = {}            # benefits in 1st variant
         self.NB = {}            # net benefits

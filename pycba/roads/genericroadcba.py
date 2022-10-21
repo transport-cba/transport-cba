@@ -36,7 +36,8 @@ class GenericRoadCBA(GenericCBA):
                                   "to be defined in the specific "
                                   "implementation")
 
-    def read_project_inputs(self):
+    def read_project_inputs(self, df_rp, df_capex,
+                            df_int_0, df_int_1, df_vel_0, df_vel_1):
         raise NotImplementedError("Function read_project_inputs is supposed"
                                   "to be defined in the specific "
                                   "implementation")

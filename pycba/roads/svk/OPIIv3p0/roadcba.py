@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from pycba.roads import GenericRoadCBA
 
+DAYS_YEAR = 365.0
 
 class RoadCBA(GenericRoadCBA):
     """
@@ -80,12 +81,13 @@ class RoadCBA(GenericRoadCBA):
 
         # OPIIv3p0 specific part
         # OPIIv3p0 parameters behaviour
-        self.PRICE_LEVEL_ADJUSTED = ["c_op"]
+        self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts"]
         # self.PRICE_LEVEL_ADJUSTED = ["c_op", "toll_op",
         #           "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]
 
         # OPIIv3p0 dataframes for road CBA
         self.RP = None      # road parameters
+        self.L = None
 
     def run_cba(self):
         self.read_parameters()
@@ -155,6 +157,17 @@ class RoadCBA(GenericRoadCBA):
             pd.read_excel(self.paramfile,
                           sheet_name="operation_cost")
 
+        self.params_raw['occ_p'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="passenger_occupancy")
+
+        self.params_raw['r_tp'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="trip_purpose")
+
+        self.params_raw['vtts'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="vtts")
 
     def _clean_parameters(self):
         """
@@ -242,13 +255,50 @@ class RoadCBA(GenericRoadCBA):
             ["section_type", "surface", "condition", "lower_usage"]
         )
 
+        self._wrangle_vtts()
+
+    def _wrangle_vtts(self):
+        """
+        Average the value of travel time savings over everything other
+        than vehicle type.
+
+        Result:
+            self.params_clean['vtts'] contains unit values of vtts for
+            vehicle types. Unit is eur/h/veh.
+        """
+
+        vtts = self.params_clean['r_tp'].set_index('vehicle')
+        # ignore train and mass transit for RoadCBA
+        vtts = vtts.drop(index=['transit', 'train'])
+        vtts = pd.DataFrame(vtts.stack(0), columns=['value'])
+        vtts.index.names = ['vehicle', 'purpose']
+
+        # compute passenger purpose per vehicle
+        occ_p = self.params_clean['occ_p'].set_index('vehicle')[['value']]
+        vtts = vtts * occ_p
+        vtts_unit = self.params_clean['vtts']
+
+        # compute value of travel time saved per vehicle per purpose
+        vtts = vtts_unit.set_index('purpose')['value'].to_frame() * vtts
+
+        # append info on price level and gdp adjustment elasticity
+        vtts = pd.merge(
+            vtts.reset_index(),
+            vtts_unit[['purpose', 'base_year', 'gdp_growth_adjustment']],
+            on='purpose',
+            how='left')
+
+        vtts = vtts.set_index(['vehicle', 'purpose'])
+        self.params_clean['vtts'] = vtts.copy()
+
     def prepare_parameters(self):
         self._clean_parameters()
         self._wrangle_cpi()
         self._adjust_price_level()
         self._wrangle_parameters()
 
-    def read_project_inputs(self, df_rp, df_capex):
+    def read_project_inputs(self, df_rp, df_capex,
+                            df_int_0, df_int_1, df_vel_0, df_vel_1):
         """
             Input
             ------
@@ -257,6 +307,18 @@ class RoadCBA(GenericRoadCBA):
 
             df_capex: pandas DataFrame
                 Dataframe of investment costs.
+
+            df_int_0: pandas DataFrame
+                Dataframe of vehicle intensities (AADT) in variant 0.
+
+            df_vel_0: pandas DataFrame
+                Dataframe of vehicle velocities in variant 0.
+
+             df_int_1: pandas DataFrame
+                Dataframe of vehicle intensities (AADT) in variant 1.
+
+            df_vel_1: pandas DataFrame
+                Dataframe of vehicle velocities in variant 1.
 
             Returns
             ------
@@ -268,12 +330,52 @@ class RoadCBA(GenericRoadCBA):
         self.RP = df_rp.copy()
         self.C_fin = df_capex.copy()
 
+        self.I0 = df_int_0.copy()
+        self.I1 = df_int_1.copy()
+        self.V0 = df_vel_0.copy()
+        self.V1 = df_vel_1.copy()
+
         # assign core variables
         #self._assign_core_variables()
         self._wrangle_inputs()
 
     def _wrangle_inputs(self):
+        """
+        Modify input matrices of intensities and velocities
+        in line with the economic period and other global requirements.
+        Ensure that the columns representing years are integers.
+        """
+
+        self.I0 = self._wrangle_intensity_velocity(self.I0, 'I0')
+        self.I1 = self._wrangle_intensity_velocity(self.I1, 'I1')
+        self.V0 = self._wrangle_intensity_velocity(self.V0, 'V0')
+        self.V1 = self._wrangle_intensity_velocity(self.V1, 'V1')
+
         self._wrangle_capex()
+
+    def _wrangle_intensity_velocity(self, df, name):
+        """
+        df: pandas DataFrame
+            Dataframe of vehicle intensities or velocities.
+
+        name: string
+            Name of the dataframe to be used in a warning.
+        """
+
+        df_out = df.reset_index()\
+                    .drop(columns='id_model_section')\
+                    .set_index(['id_road_section', 'vehicle'])
+        df_out.columns = df_out.columns.astype(int)
+
+        if df_out.columns[-1] < self.yr_f:
+            if self.verbose:
+                print("Warning: "
+                      + name
+                      + " not forecast until the end of period,"
+                        "filling with zeros.")
+        df_out = df_out[self.yrs].fillna(0)
+
+        return df_out
 
     def _wrangle_capex(self):
         """Collect capex."""
@@ -382,7 +484,7 @@ class RoadCBA(GenericRoadCBA):
         if self.verbose:
             print("Creating time series for benefits' unit costs...")
 
-        for b in ["c_op"]:
+        for b in ["c_op", "vtts"]:
             if self.verbose:
                 print("    Creating: %s" % b)
             # set up empty dataframe
@@ -433,6 +535,51 @@ class RoadCBA(GenericRoadCBA):
                 self.UC[b].columns.name = 'year'
 
 
+    def _create_length_matrix(self):
+        """Create the matrix of lengths with years as columns"""
+        if self.verbose:
+            print("Creating length matrix...")
+
+        # prepare index of road parameters: distinguish by length and variant
+        self.RP.reset_index(inplace=True)
+        self.RP.set_index(['id_road_section', 'variant'], inplace=True)
+
+        self.L = pd.DataFrame(\
+            np.outer(self.RP.length, np.ones_like(self.yrs)), \
+            columns=self.yrs, index=self.RP.index)
+
+    def _compute_travel_time_matrix(self):
+        """Compute travel time by road section and vehicle type"""
+        if self.verbose:
+            print("Creating matrices of travel times...")
+        assert self.L is not None, "Compute length matrix first."
+
+        L0 = self.L.loc[(slice(None), 0), :]
+        self.T0 = L0 / self.V0
+        self.T0 = self.T0.replace([np.inf, -np.inf], 0.0).dropna()
+        self.T0 = self.T0.reset_index().drop(columns=['variant'])\
+                         .set_index(['id_road_section', 'vehicle'])
+
+        L1 = self.L.loc[(slice(None), 1), :]
+        self.T1 = L1 / self.V1
+        self.T1 = self.T1.replace([np.inf, -np.inf], 0.0).dropna()
+        self.T1 = self.T1.reset_index().drop(columns=['variant']) \
+                         .set_index(['id_road_section', 'vehicle'])
+
+    def _compute_vtts(self):
+        """Mask is given by the intensities, as these are zero
+        in the construction years"""
+
+        if self.verbose:
+            print("    Computing VTTS...")
+        assert self.T0 is not None, "Compute travel time first."
+        assert self.T1 is not None, "Compute travel time first."
+
+        b = "vtts"
+        self.B0[b] = self.UC[b] * self.T0 * self.I0 * DAYS_YEAR
+        self.B1[b] = self.UC[b] * self.T1 * self.I1 * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
     def perform_economic_analysis(self):
         raise NotImplementedError("Function perform_economic_analysis is "
                                   "supposed to be defined in the specific "
@@ -445,4 +592,4 @@ class RoadCBA(GenericRoadCBA):
         raise NotImplementedError("To be added.")
 
     def print_financial_indicators(self):
-        super().read_parameters()
+        raise NotImplementedError("To be added.")

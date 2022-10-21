@@ -240,6 +240,9 @@ class ParamContainer(object):
             "gdp_growth_adjustment", "purpose_ratio"])\
             ["value"].sum().reset_index()
 
+        # !
+        # toto neplati. elasticitu nemozno vazit tymto sposobom.
+
         # unify gdp growth adjustment by trip purpose ratio
         vtts["gdp_ga2"] = vtts.purpose_ratio * vtts.gdp_growth_adjustment
         vtts["value2"] = vtts.purpose_ratio * vtts.value

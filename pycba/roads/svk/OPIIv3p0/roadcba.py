@@ -81,13 +81,16 @@ class RoadCBA(GenericRoadCBA):
 
         # OPIIv3p0 specific part
         # OPIIv3p0 parameters behaviour
-        self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts"]
+        self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t']
         # self.PRICE_LEVEL_ADJUSTED = ["c_op", "toll_op",
         #           "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]
 
         # OPIIv3p0 dataframes for road CBA
         self.RP = None      # road parameters
         self.L = None
+        self.L0 = None
+        self.L1 = None
+        self.RF = None
 
     def run_cba(self):
         self.read_parameters()
@@ -147,28 +150,31 @@ class RoadCBA(GenericRoadCBA):
             pd.read_excel(self.paramfile,
                           sheet_name="residual_value",
                           index_col=0)
-
         self.params_raw["conv_fac"] = \
             pd.read_excel(self.paramfile,
                           sheet_name="conversion_factors",
                           index_col=0)
-
         self.params_raw["c_op"] = \
             pd.read_excel(self.paramfile,
                           sheet_name="operation_cost")
-
         self.params_raw['occ_p'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="passenger_occupancy")
-
         self.params_raw['r_tp'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="trip_purpose")
-
         self.params_raw['vtts'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="vtts")
-
+        self.params_raw['voc_t'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="voc_t")
+        self.params_raw['voc_l'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="voc_l")
+        self.params_raw['r_fuel'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="fuel_ratio")
     def _clean_parameters(self):
         """
         Incorporate scale into values.
@@ -256,6 +262,8 @@ class RoadCBA(GenericRoadCBA):
         )
 
         self._wrangle_vtts()
+        self._wrangle_fuel()
+        self._wrangle_voc()
 
     def _wrangle_vtts(self):
         """
@@ -290,6 +298,31 @@ class RoadCBA(GenericRoadCBA):
 
         vtts = vtts.set_index(['vehicle', 'purpose'])
         self.params_clean['vtts'] = vtts.copy()
+
+    def _wrangle_voc(self):
+        # distance-dependent
+        voc_l = self.params_clean['voc_l']
+        voc_l = voc_l.set_index(['vehicle', 'fuel'])
+        self.params_clean['voc_l'] = voc_l.copy()
+
+        # time-dependent
+        voc_t = self.params_clean['voc_t']
+        voc_t = voc_t.set_index(['vehicle', 'fuel'])
+        self.params_clean['voc_t'] = voc_t.copy()
+
+    def _wrangle_fuel(self):
+        """
+
+        Result:
+            self.params_clean['r_fuel'] contains values indexed by vehicle
+            and fuel type.
+        """
+
+        # set index on fuel ratio
+        c = "r_fuel"
+        self.params_clean[c].reset_index(inplace=True, drop=True)
+        self.params_clean[c].set_index(["vehicle", "fuel"], inplace=True)
+
 
     def prepare_parameters(self):
         self._clean_parameters()
@@ -484,7 +517,7 @@ class RoadCBA(GenericRoadCBA):
         if self.verbose:
             print("Creating time series for benefits' unit costs...")
 
-        for b in ["c_op", "vtts"]:
+        for b in ["c_op", "vtts", "voc_l", 'voc_t']:
             if self.verbose:
                 print("    Creating: %s" % b)
             # set up empty dataframe
@@ -548,23 +581,38 @@ class RoadCBA(GenericRoadCBA):
             np.outer(self.RP.length, np.ones_like(self.yrs)), \
             columns=self.yrs, index=self.RP.index)
 
+        self.L0 = self.L.loc[(slice(None), 0), :]
+        self.L0 = self.L0.reset_index().drop(columns='variant')\
+                      .set_index('id_road_section')
+
+        self.L1 = self.L.loc[(slice(None), 1), :]
+        self.L1 = self.L1.reset_index().drop(columns='variant') \
+                      .set_index('id_road_section')
+
     def _compute_travel_time_matrix(self):
         """Compute travel time by road section and vehicle type"""
         if self.verbose:
             print("Creating matrices of travel times...")
         assert self.L is not None, "Compute length matrix first."
 
-        L0 = self.L.loc[(slice(None), 0), :]
-        self.T0 = L0 / self.V0
+        self.T0 = self.L0 / self.V0
         self.T0 = self.T0.replace([np.inf, -np.inf], 0.0).dropna()
-        self.T0 = self.T0.reset_index().drop(columns=['variant'])\
+        self.T0 = self.T0.reset_index()\
                          .set_index(['id_road_section', 'vehicle'])
 
-        L1 = self.L.loc[(slice(None), 1), :]
-        self.T1 = L1 / self.V1
+        self.T1 = self.L1 / self.V1
         self.T1 = self.T1.replace([np.inf, -np.inf], 0.0).dropna()
-        self.T1 = self.T1.reset_index().drop(columns=['variant']) \
+        self.T1 = self.T1.reset_index()\
                          .set_index(['id_road_section', 'vehicle'])
+
+    def _create_fuel_ratio_matrix(self):
+        if self.verbose:
+            print("Creating matrix of fuel ratios by vehicle...")
+        r_fuel = self.params_clean['r_fuel']
+        self.RF = pd.DataFrame(np.outer(r_fuel['value'],
+                                        np.ones_like(self.yrs)),
+                               columns=self.yrs,
+                               index=r_fuel.index)
 
     def _compute_vtts(self):
         """Mask is given by the intensities, as these are zero
@@ -578,6 +626,25 @@ class RoadCBA(GenericRoadCBA):
         b = "vtts"
         self.B0[b] = self.UC[b] * self.T0 * self.I0 * DAYS_YEAR
         self.B1[b] = self.UC[b] * self.T1 * self.I1 * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
+    def _compute_voc(self):
+        assert self.L0 is not None, "Compute length matrix first."
+        assert self.L1 is not None, "Compute length matrix first."
+        assert self.T0 is not None, "Compute travel time first."
+        assert self.T1 is not None, "Compute travel time first."
+        assert self.RF is not None, "Compute fleet composition first"
+
+        # length-dependent part
+        b = 'voc_l'
+        self.B0[b] = self.UC[b] * self.RF * (self.L0 * self.I0) * DAYS_YEAR
+        self.B1[b] = self.UC[b] * self.RF * (self.L1 * self.I1) * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
+        # time-dependent part
+        b = 'voc_t'
+        self.B0[b] = self.UC[b] * self.RF * (self.T0 * self.I0) * DAYS_YEAR
+        self.B1[b] = self.UC[b] * self.RF * (self.T1 * self.I1) * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
     def perform_economic_analysis(self):

@@ -255,7 +255,7 @@ class ParamContainer(object):
 
 
     def _wrangle_fuel(self):
-        """Convert units from eur/l to eur/kg"""
+        """Converta units from eur/l to eur/kg"""
         # fuel ratios for vehicle types
         c = "r_fuel"
         self.df_clean[c].reset_index(inplace=True)

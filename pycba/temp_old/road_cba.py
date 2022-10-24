@@ -590,8 +590,8 @@ class RoadCBA(ParamContainer):
 
 
     def _create_fuel_ratio_matrix(self):
-        if self.verbose:
-            print("Creating matrix of fuel ratios by vehicle...")
+            if self.verbose:
+                print("Creating matrix of fuel ratios by vehicle...")
         rfuel = self.df_clean["r_fuel"].ratio.sort_index()
         self.RF = pd.DataFrame(repmat(rfuel, self.N_yr, 1).T, \
             columns=self.yrs, index=rfuel.index)

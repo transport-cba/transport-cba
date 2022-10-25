@@ -4,6 +4,7 @@ from pycba.roads import GenericRoadCBA
 
 DAYS_YEAR = 365.0
 
+
 class RoadCBA(GenericRoadCBA):
     """
     Implementation of economic evaluation using the methods and parameters
@@ -81,16 +82,28 @@ class RoadCBA(GenericRoadCBA):
 
         # OPIIv3p0 specific part
         # OPIIv3p0 parameters behaviour
+        self.ACCELERATION_COLUMNS = ['exit_intravilan','roundabout_intravilan',
+                    'roundabout_extravilan', 'intersection_intravilan',
+                    'intersection_extravilan', 'interchange']
         self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t']
         # self.PRICE_LEVEL_ADJUSTED = ["c_op", "toll_op",
         #           "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]
 
         # OPIIv3p0 dataframes for road CBA
         self.RP = None      # road parameters
-        self.L = None
+
         self.L0 = None
         self.L1 = None
-        self.RF = None
+        self.V0 = None
+        self.V1 = None
+        self.T0 = None
+        self.T1 = None
+        self.I0 = None
+        self.I1 = None
+
+        self.RF = None  # ratio of fuel types
+        self.QF0 = None  # quantity of fuel burnt on a section in variant 0
+        self.QF1 = None  # quantity of fuel burnt on a section in variant 1
 
     def run_cba(self):
         self.read_parameters()
@@ -175,6 +188,18 @@ class RoadCBA(GenericRoadCBA):
         self.params_raw['r_fuel'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="fuel_ratio")
+        self.params_raw['fuel_coeffs'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="fuel_consumption")
+        self.params_raw['fuel_acc'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="fuel_consumption_acceleration")
+        self.params_raw['fuel_rho'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="fuel_density")
+        self.params_raw['c_fuel'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="fuel_cost")
     def _clean_parameters(self):
         """
         Incorporate scale into values.
@@ -323,6 +348,46 @@ class RoadCBA(GenericRoadCBA):
         self.params_clean[c].reset_index(inplace=True, drop=True)
         self.params_clean[c].set_index(["vehicle", "fuel"], inplace=True)
 
+        c = 'fuel_rho'
+        self.params_clean[c].set_index('fuel', inplace=True)
+
+        # convert from eur/l to eur/kg
+        c = 'c_fuel'
+        self.params_clean[c].set_index('fuel', inplace=True)
+
+        self.params_clean[c]["value"] = \
+            self.params_clean[c]['value']\
+            / self.params_clean['fuel_rho']['value']
+
+        # convert parameters to output polyfit in kg/km
+        c = "fuel_coeffs"
+        self.params_clean[c] = pd.merge(self.params_clean[c]\
+                                                .reset_index(drop=True),
+                                        self.params_clean['fuel_rho']\
+                                                .rename(columns={
+                                                    'value': 'density'}),
+                                        how="left",
+                                        on="fuel")\
+                                    .set_index(["vehicle", "fuel"])
+
+        # multiply polynomial coefficients by density
+        for col in ["a0", "a1", "a2", "a3"]:
+            self.params_clean[c][col] = \
+                self.params_clean[c][col] * self.params_clean[c]['density']
+        self.params_clean[c].drop(columns=["density"], inplace=True)
+
+        # multiply by density
+        c = "fuel_acc"
+        self.params_clean[c].set_index(['vehicle', 'fuel'], inplace=True)
+        self.params_clean[c] = self.params_clean[c].stack()\
+                                                   .to_frame().rename(
+                                                        columns={0: 'value'})
+        self.params_clean[c] = self.params_clean[c]\
+                                    * self.params_clean['fuel_rho']
+        self.params_clean[c] = self.params_clean[c].unstack(2)
+        # simplify columns index
+        self.params_clean[c].columns = self.params_clean[c]\
+                                                .columns.get_level_values(1)
 
     def prepare_parameters(self):
         self._clean_parameters()
@@ -385,6 +450,10 @@ class RoadCBA(GenericRoadCBA):
         self.V1 = self._wrangle_intensity_velocity(self.V1, 'V1')
 
         self._wrangle_capex()
+
+        # fill 0 to acceleration coefficients
+        self.RP[self.ACCELERATION_COLUMNS] = \
+            self.RP[self.ACCELERATION_COLUMNS].fillna(0)
 
     def _wrangle_intensity_velocity(self, df, name):
         """
@@ -502,7 +571,6 @@ class RoadCBA(GenericRoadCBA):
         self.O1_eco = self.O1_fin * cf
         self.NC["opex"] = self.O1_eco.sum() - self.O0_eco.sum()
 
-
     # compute areas
 
     # =====
@@ -517,7 +585,7 @@ class RoadCBA(GenericRoadCBA):
         if self.verbose:
             print("Creating time series for benefits' unit costs...")
 
-        for b in ["c_op", "vtts", "voc_l", 'voc_t']:
+        for b in ["c_op", "vtts", "voc_l", 'voc_t', 'c_fuel']:
             if self.verbose:
                 print("    Creating: %s" % b)
             # set up empty dataframe
@@ -548,9 +616,8 @@ class RoadCBA(GenericRoadCBA):
                 if "gdp_growth_adjustment" in self.params_clean[b].columns:
                     UC_helper[yr] = UC_helper[yr] \
                                     * (1.0
-                                       + self.gdp_growth.loc[yr-1, "gdp_growth"]
-                                        * self.params_clean[b]
-                                       ["gdp_growth_adjustment"])
+                                      + self.gdp_growth.loc[yr-1, "gdp_growth"]
+                                      * self.params_clean[b]["gdp_growth_adjustment"])
 
             self.UC[b][self.yr_i] = UC_helper[self.yr_i]
             for yr in self.yrs[1:]:
@@ -615,14 +682,13 @@ class RoadCBA(GenericRoadCBA):
                                index=r_fuel.index)
 
     def _compute_vtts(self):
-        """Mask is given by the intensities, as these are zero
-        in the construction years"""
-
         if self.verbose:
             print("    Computing VTTS...")
         assert self.T0 is not None, "Compute travel time first."
         assert self.T1 is not None, "Compute travel time first."
 
+        # Mask is given by the intensities, as these are zero
+        # in the construction years
         b = "vtts"
         self.B0[b] = self.UC[b] * self.T0 * self.I0 * DAYS_YEAR
         self.B1[b] = self.UC[b] * self.T1 * self.I1 * DAYS_YEAR
@@ -646,6 +712,128 @@ class RoadCBA(GenericRoadCBA):
         self.B0[b] = self.UC[b] * self.RF * (self.T0 * self.I0) * DAYS_YEAR
         self.B1[b] = self.UC[b] * self.RF * (self.T1 * self.I1) * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
+    def _compute_fuel_cost(self):
+        if self.verbose:
+            print("    Computing fuel cost...")
+        assert self.QF0 is not None, \
+            "Compute matrix of fuel consumption (QF0) first."
+        assert self.QF1 is not None, \
+            "Compute matrix of fuel consumption (QF1) first."
+
+        b = "fuel"
+        c = "c_fuel"
+        self.B0[b] = (self.RF * self.UC[c]) * (self.QF0 * self.I0) * DAYS_YEAR
+        self.B1[b] = (self.RF * self.UC[c]) * (self.QF1 * self.I1) * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
+    def _compute_fuel_consumption(self):
+        """
+        Compute the consumption in kg per vehicle by section, vehicle
+        and fuel type.
+        """
+        if self.verbose:
+            print("    Computing fuel consumption...")
+        assert self.L0 is not None, "Compute length matrix first."
+        assert self.L1 is not None, "Compute length matrix first."
+
+        ###
+        # velocity-dependent part
+        ###
+
+        # get a matrix of ones per vehicle, fuel type and year
+        helper_ones = self.RF.copy() / self.RF.copy()
+
+        # velocity by vehicle, fuel type, section and year
+        # assumes vehicles with different fuel move at the same speed
+        V0s = helper_ones * self.V0
+        V0s = V0s.sort_index()
+
+        V1s = helper_ones * self.V1
+        V1s = V1s.sort_index()
+
+        # quantity of fuel consumed per vehicle, fuel type and section
+        self.QF0 = pd.DataFrame(0, columns=V0s.columns, index=V0s.index)
+        self.QF1 = pd.DataFrame(0, columns=V1s.columns, index=V1s.index)
+
+        for (veh, f), cs in self.params_clean['fuel_coeffs'].iterrows():
+            # consumption-velocity curve coefficients
+            c = cs.values
+
+            # variant 0
+            vs = V0s.loc[(veh, f)]
+            qf = np.polynomial.polynomial.polyval(vs, c, tensor=False)
+            self.QF0.loc[(veh, f)] = qf.values
+
+            # variant 1
+            vs = V1s.loc[(veh, f)]
+            qf = np.polynomial.polynomial.polyval(vs, c, tensor=False)
+            self.QF1.loc[(veh, f)] = qf.values
+
+        # velocity part
+        self.QFv0 = self.QF0 * self.L0
+        self.QFv1 = self.QF1 * self.L1
+
+        ##
+        # acceleration-dependent part
+        ##
+
+        self.RP = self.RP.reset_index().set_index('id_road_section')
+
+        # time matrix of acceleration ratios - variant 0, 1
+        acceleration_mat0 = self.RP.loc[self.RP['variant'] == 0,
+                                        self.ACCELERATION_COLUMNS]\
+                                    .stack().to_frame()
+        acceleration_mat1 = self.RP.loc[self.RP['variant'] == 1,
+                                        self.ACCELERATION_COLUMNS] \
+                                    .stack().to_frame()
+
+        # reindex to the original columns
+        self.RP = self.RP.reset_index()\
+                         .set_index(['id_model_section', 'variant'])
+
+        acceleration_mat0.columns = ['ratio']
+        acceleration_mat0.index.names = ['id_road_section', 'acceleration']
+        acceleration_mat1.columns = ['ratio']
+        acceleration_mat1.index.names = ['id_road_section', 'acceleration']
+
+        acceleration_mat0 = pd.DataFrame(np.outer(acceleration_mat0['ratio'],
+                                        np.ones_like(self.yrs)),
+                                        columns=self.yrs,
+                                        index=acceleration_mat0.index)
+
+        acceleration_mat1 = pd.DataFrame(np.outer(acceleration_mat1['ratio'],
+                                         np.ones_like(self.yrs)),
+                                         columns=self.yrs,
+                                         index=acceleration_mat1.index)
+
+        # time-matrix of fuel consumption
+        fuel_acc_mat = self.params_clean['fuel_acc'].stack().to_frame()
+        fuel_acc_mat.columns = ['value']
+        fuel_acc_mat.index.names = ['vehicle', 'fuel', 'acceleration']
+
+        fuel_acc_mat = pd.DataFrame(np.outer(fuel_acc_mat['value'],
+                                             np.ones_like(self.yrs)),
+                                    columns=self.yrs,
+                                    index=fuel_acc_mat.index)
+
+        # ones in the index and columns structure of intensity dataframes
+        ones0 = self.I0/self.I0
+        ones1 = self.I1/self.I1
+
+        QFa0 = ((helper_ones * ones0) * acceleration_mat0 * fuel_acc_mat)
+        QFa1 = ((helper_ones * ones1) * acceleration_mat1 * fuel_acc_mat)
+
+        # acceleration dependent part
+        self.QFa0 = QFa0.reset_index()\
+                        .groupby(['vehicle', 'fuel', 'id_road_section'])[self.yrs]\
+                        .sum()
+        self.QFa1 = QFa1.reset_index() \
+                        .groupby(['vehicle', 'fuel', 'id_road_section'])[self.yrs]\
+                        .sum()
+
+        self.QF0 = self.QFv0 + self.QFa0
+        self.QF1 = self.QFv1 + self.QFa1
 
     def perform_economic_analysis(self):
         raise NotImplementedError("Function perform_economic_analysis is "

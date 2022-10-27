@@ -85,7 +85,8 @@ class RoadCBA(GenericRoadCBA):
         self.ACCELERATION_COLUMNS = ['exit_intravilan','roundabout_intravilan',
                     'roundabout_extravilan', 'intersection_intravilan',
                     'intersection_extravilan', 'interchange']
-        self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t', 'c_ghg']
+        self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t', 'c_ghg',
+                                     'c_em', 'c_noise']
         # self.PRICE_LEVEL_ADJUSTED = ["c_op", "toll_op",
         #           "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]
 
@@ -212,6 +213,10 @@ class RoadCBA(GenericRoadCBA):
         self.params_raw['c_em'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="emission_cost")
+        self.params_raw['c_noise'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="noise_cost")
+
     def _clean_parameters(self):
         """
         Incorporate scale into values.
@@ -309,6 +314,7 @@ class RoadCBA(GenericRoadCBA):
         self._wrangle_voc()
         self._wrangle_ghg()
         self._wrangle_emissions()
+        self._wrangle_noise()
 
     def _wrangle_vtts(self):
         """
@@ -456,7 +462,10 @@ class RoadCBA(GenericRoadCBA):
         # self.params_clean[c] = c_em.set_index(['vehicle', 'fuel',
         #                                        'substance', 'environment'])
 
-
+    def _wrangle_noise(self):
+        b = 'c_noise'
+        self.params_clean[b] = self.params_clean[b].set_index(['vehicle',
+                                                               'environment'])
 
     def prepare_parameters(self):
         self._clean_parameters()
@@ -654,7 +663,8 @@ class RoadCBA(GenericRoadCBA):
         if self.verbose:
             print("Creating time series for benefits' unit costs...")
 
-        for b in ["c_op", "vtts", "voc_l", 'voc_t', 'c_fuel', 'c_em']:
+        for b in ["c_op", "vtts", "voc_l", 'voc_t', 'c_fuel', 'c_em',
+                  'c_noise']:
             if self.verbose:
                 print("    Creating: %s" % b)
             # set up empty dataframe
@@ -966,7 +976,40 @@ class RoadCBA(GenericRoadCBA):
         self.B0[b] = self.B0[b].reorder_levels(lvl_order).sort_index()
         self.B1[b] = I1_env * self.RF * self.QF1 * uc_em * DAYS_YEAR
         self.B1[b] = self.B1[b].reorder_levels(lvl_order).sort_index()
-        
+
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
+    def _compute_noise(self):
+        if self.verbose:
+            print("    Computing noise...")
+        assert self.L0 is not None, "Compute length matrix first."
+        assert self.L1 is not None, "Compute length matrix first."
+
+        # merge environment variable onto intensity dataframe
+        I0_env = pd.merge(self.I0.reset_index(),
+                          self.RP.loc[(slice(None), 0), :]\
+                            .reset_index()[['id_road_section', 'environment']],
+                          how='left',
+                          on='id_road_section')
+        I0_env.set_index(['id_road_section', 'vehicle', 'environment'],
+                         inplace=True)
+
+        I1_env = pd.merge(self.I1.reset_index(),
+                          self.RP.loc[(slice(None), 1), :] \
+                            .reset_index()[['id_road_section', 'environment']],
+                          how='left',
+                          on='id_road_section')
+        I1_env.set_index(['id_road_section', 'vehicle', 'environment'],
+                         inplace=True)
+
+        b = 'noise'
+
+        lvl_order = ['id_road_section', 'vehicle', 'environment']
+        self.B0[b] = I0_env * self.L0 * self.UC['c_noise'] * DAYS_YEAR
+        self.B0[b] = self.B0[b].reorder_levels(lvl_order).sort_index()
+        self.B1[b] = I1_env * self.L1 * self.UC['c_noise'] * DAYS_YEAR
+        self.B1[b] = self.B1[b].reorder_levels(lvl_order).sort_index()
+
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
     def perform_economic_analysis(self):

@@ -948,16 +948,16 @@ class RoadCBA(GenericRoadCBA):
 
         # merge environment variable onto intensity dataframe
         I0_env = pd.merge(self.I0.reset_index(),
-                          self.RP.loc[slice(None, 0),
-                                      ['environment']].reset_index(),
+                          self.RP.loc[(slice(None), 0), :] \
+                          .reset_index()[['id_road_section', 'environment']],
                           how='left',
                           on='id_road_section')
-        I0_env.set_index(['id_road_section', 'vehicle','environment'],
+        I0_env.set_index(['id_road_section', 'vehicle', 'environment'],
                          inplace=True)
 
         I1_env = pd.merge(self.I1.reset_index(),
-                          self.RP.loc[slice(None, 1),
-                                      ['environment']].reset_index(),
+                          self.RP.loc[(slice(None), 1), :] \
+                          .reset_index()[['id_road_section', 'environment']],
                           how='left',
                           on='id_road_section')
         I1_env.set_index(['id_road_section', 'vehicle', 'environment'],

@@ -206,6 +206,12 @@ class RoadCBA(GenericRoadCBA):
         self.params_raw['c_ghg'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="co2_cost")
+        self.params_raw['r_em'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="emission_rate")
+        self.params_raw['c_em'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="emission_cost")
     def _clean_parameters(self):
         """
         Incorporate scale into values.
@@ -302,6 +308,7 @@ class RoadCBA(GenericRoadCBA):
         self._wrangle_fuel()
         self._wrangle_voc()
         self._wrangle_ghg()
+        self._wrangle_emissions()
 
     def _wrangle_vtts(self):
         """
@@ -419,6 +426,37 @@ class RoadCBA(GenericRoadCBA):
 
         b = 'c_ghg'
         self.params_clean[b].set_index('year', inplace=True)
+
+    def _wrangle_emissions(self):
+        """
+        Output:
+            self.params_clean['c_em'] contains cost of emission pollution
+            in eur/kg fuel consumed by vehicle type, fuel, substance
+            and environment
+        """
+        c = 'r_em'
+        self.params_clean[c].set_index(['vehicle', 'fuel', 'substance'],
+                                       inplace=True)
+
+        #
+
+        c = 'c_em'
+        self.params_clean[c].set_index(['substance', 'environment'],
+                                       inplace=True)
+
+        # # multiply cost per kg by rate per kg fuel
+        # c_em = self.params_clean[c][['value']] * self.params_clean['r_em']
+        # # merge with elasticity and price level values
+        # c_em = pd.merge(c_em.reset_index(),
+        #                 self.params_clean[c][
+        #                     ['price_level', 'gdp_growth_adjustment']],
+        #                 how='left',
+        #                 left_on=['substance', 'environment'],
+        #                 right_index=True)
+        # self.params_clean[c] = c_em.set_index(['vehicle', 'fuel',
+        #                                        'substance', 'environment'])
+
+
 
     def prepare_parameters(self):
         self._clean_parameters()
@@ -616,7 +654,7 @@ class RoadCBA(GenericRoadCBA):
         if self.verbose:
             print("Creating time series for benefits' unit costs...")
 
-        for b in ["c_op", "vtts", "voc_l", 'voc_t', 'c_fuel']:
+        for b in ["c_op", "vtts", "voc_l", 'voc_t', 'c_fuel', 'c_em']:
             if self.verbose:
                 print("    Creating: %s" % b)
             # set up empty dataframe
@@ -832,7 +870,7 @@ class RoadCBA(GenericRoadCBA):
 
         # reindex to the original columns
         self.RP = self.RP.reset_index()\
-                         .set_index(['id_model_section', 'variant'])
+                         .set_index(['id_road_section', 'variant'])
 
         acceleration_mat0.columns = ['ratio']
         acceleration_mat0.index.names = ['id_road_section', 'acceleration']
@@ -884,12 +922,51 @@ class RoadCBA(GenericRoadCBA):
         assert self.QF0 is not None, "Compute matrix of fuel consumption (QF0) first."
         assert self.QF1 is not None, "Compute matrix of fuel consumption (QF1) first."
 
-        b = "c_ghg"
-
+        b = "ghg"
         self.B0[b] = (self.UC['c_ghg'] * self.RF)  \
                      * (self.QF0 * self.I0) * DAYS_YEAR
         self.B1[b] = (self.UC['c_ghg']  * self.RF) \
                      * (self.QF1 * self.I1) * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
+    def _compute_emissions(self):
+        if self.verbose:
+            print("    Computing emissions...")
+        assert self.RF is not None, "Compute matrix of fuel ratios (RF) first."
+        assert self.QF0 is not None, "Compute matrix of fuel consumption (QF0) first."
+        assert self.QF1 is not None, "Compute matrix of fuel consumption (QF1) first."
+
+        # merge environment variable onto intensity dataframe
+        I0_env = pd.merge(self.I0.reset_index(),
+                          self.RP.loc[slice(None, 0),
+                                      ['environment']].reset_index(),
+                          how='left',
+                          on='id_road_section')
+        I0_env.set_index(['id_road_section', 'vehicle','environment'],
+                         inplace=True)
+
+        I1_env = pd.merge(self.I1.reset_index(),
+                          self.RP.loc[slice(None, 1),
+                                      ['environment']].reset_index(),
+                          how='left',
+                          on='id_road_section')
+        I1_env.set_index(['id_road_section', 'vehicle', 'environment'],
+                         inplace=True)
+
+        # compute unit cost of emissions per kg fuel for every year
+        uc_em = pd.DataFrame(self.UC['c_em'].stack(),
+                             columns=['value']) * self.params_clean['r_em']
+        uc_em = uc_em.unstack('year')
+        uc_em.columns = uc_em.columns.get_level_values(1)
+
+        b = "em"
+        lvl_order = ['id_road_section', 'vehicle', 'fuel',
+                     'substance', 'environment']
+        self.B0[b] = I0_env * self.RF * self.QF0 * uc_em * DAYS_YEAR
+        self.B0[b] = self.B0[b].reorder_levels(lvl_order).sort_index()
+        self.B1[b] = I1_env * self.RF * self.QF1 * uc_em * DAYS_YEAR
+        self.B1[b] = self.B1[b].reorder_levels(lvl_order).sort_index()
+        
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
     def perform_economic_analysis(self):

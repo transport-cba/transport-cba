@@ -85,7 +85,7 @@ class RoadCBA(GenericRoadCBA):
         self.ACCELERATION_COLUMNS = ['exit_intravilan','roundabout_intravilan',
                     'roundabout_extravilan', 'intersection_intravilan',
                     'intersection_extravilan', 'interchange']
-        self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t']
+        self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t', 'c_ghg']
         # self.PRICE_LEVEL_ADJUSTED = ["c_op", "toll_op",
         #           "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]
 
@@ -200,6 +200,12 @@ class RoadCBA(GenericRoadCBA):
         self.params_raw['c_fuel'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="fuel_cost")
+        self.params_raw['r_ghg'] = \
+            pd.read_excel(self.paramfile,
+                      sheet_name="greenhouse_rate")
+        self.params_raw['c_ghg'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="co2_cost")
     def _clean_parameters(self):
         """
         Incorporate scale into values.
@@ -215,6 +221,12 @@ class RoadCBA(GenericRoadCBA):
                 self.params_clean[itm].drop(columns=["nb"], inplace=True)
             if "unit" in self.params_clean[itm].columns:
                 self.params_clean[itm].drop(columns=["unit"], inplace=True)
+            if "scale" in self.params_clean[itm].columns:
+                if self.verbose:
+                    print("Changing scale of %s" % itm)
+                self.params_clean[itm]["value"] = \
+                    self.params_clean[itm].value * self.params_clean[itm].scale
+                self.params_clean[itm].drop(columns=["scale"], inplace=True)
 
         self.params_clean['c_op']['lower_usage'] =\
             self.params_clean['c_op']['lower_usage'].astype(bool)
@@ -289,6 +301,7 @@ class RoadCBA(GenericRoadCBA):
         self._wrangle_vtts()
         self._wrangle_fuel()
         self._wrangle_voc()
+        self._wrangle_ghg()
 
     def _wrangle_vtts(self):
         """
@@ -388,6 +401,24 @@ class RoadCBA(GenericRoadCBA):
         # simplify columns index
         self.params_clean[c].columns = self.params_clean[c]\
                                                 .columns.get_level_values(1)
+
+    def _wrangle_ghg(self):
+        """
+        Output:
+            self.params_clean['r_ghg'] contains production of co2e in g/kg fuel
+            consumed by vehicle type, fuel and gas
+        """
+        b = 'r_ghg'
+        self.params_clean[b].set_index(['vehicle', 'fuel', 'gas'],
+                                       inplace=True)
+        # convert values of gas in g/kg to gCO2eq/kg by applying equivalence
+        # factor
+        self.params_clean[b]['value'] = self.params_clean[b]['value'] \
+                                          * self.params_clean[b]['co2e_factor']
+        self.params_clean[b].drop(columns=['co2e_factor'], inplace=True)
+
+        b = 'c_ghg'
+        self.params_clean[b].set_index('year', inplace=True)
 
     def prepare_parameters(self):
         self._clean_parameters()
@@ -634,6 +665,17 @@ class RoadCBA(GenericRoadCBA):
                 # helps later with stacking/unstacking
                 self.UC[b].columns.name = 'year'
 
+        # greenhouse gases have a fixed time evolution
+        b = 'c_ghg'
+
+        r_ghg = self.params_clean['r_ghg']
+        c_ghg = self.params_clean['c_ghg'][['value']]
+
+        self.UC[b] = pd.DataFrame(np.outer(r_ghg, c_ghg),
+                                   index=r_ghg.index,
+                                   columns=c_ghg.index)
+        # restrict to years of analysis
+        self.UC[b] = self.UC[b][self.yrs]
 
     def _create_length_matrix(self):
         """Create the matrix of lengths with years as columns"""
@@ -834,6 +876,21 @@ class RoadCBA(GenericRoadCBA):
 
         self.QF0 = self.QFv0 + self.QFa0
         self.QF1 = self.QFv1 + self.QFa1
+
+    def _compute_greenhouse(self):
+        if self.verbose:
+            print("    Computing greenhouse gases...")
+        assert self.RF is not None, "Compute matrix of fuel ratios (RF) first."
+        assert self.QF0 is not None, "Compute matrix of fuel consumption (QF0) first."
+        assert self.QF1 is not None, "Compute matrix of fuel consumption (QF1) first."
+
+        b = "c_ghg"
+
+        self.B0[b] = (self.UC['c_ghg'] * self.RF)  \
+                     * (self.QF0 * self.I0) * DAYS_YEAR
+        self.B1[b] = (self.UC['c_ghg']  * self.RF) \
+                     * (self.QF1 * self.I1) * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
     def perform_economic_analysis(self):
         raise NotImplementedError("Function perform_economic_analysis is "

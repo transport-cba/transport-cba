@@ -86,12 +86,13 @@ class RoadCBA(GenericRoadCBA):
                     'roundabout_extravilan', 'intersection_intravilan',
                     'intersection_extravilan', 'interchange']
         self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t', 'c_ghg',
-                                     'c_em', 'c_noise']
+                                     'c_em', 'c_noise', 'c_acc']
         # self.PRICE_LEVEL_ADJUSTED = ["c_op", "toll_op",
         #           "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]
 
-        # OPIIv3p0 dataframes for road CBA
-        self.RP = None      # road parameters
+        # OPII v 3.0 dataframes for road CBA
+        self.RP = None                  # road parameters
+        self.acc_loaded = False         # flag for accident rates
 
         self.L0 = None
         self.L1 = None
@@ -112,6 +113,13 @@ class RoadCBA(GenericRoadCBA):
 
     def read_parameters(self):
         self._read_raw_parameters()
+
+    def read_custom_accident_rates(self, df_acc_rates):
+        """
+        Load accident rates from a dataframe.
+        """
+        self.params_raw['r_acc_c'] = df_acc_rates.copy()
+        self.acc_loaded = True
 
     def _read_raw_parameters(self):
         """Load all parameter dataframes"""
@@ -216,6 +224,12 @@ class RoadCBA(GenericRoadCBA):
         self.params_raw['c_noise'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="noise_cost")
+        self.params_raw['r_acc_d'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="accident_rate")
+        self.params_raw['c_acc'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="accident_cost")
 
     def _clean_parameters(self):
         """
@@ -224,6 +238,8 @@ class RoadCBA(GenericRoadCBA):
         """
         if self.verbose:
             print("Cleaning parameters...")
+
+        # apply scale to accident rates
         for itm in self.params_raw.keys():
             if self.verbose:
                 print("    Cleaning: %s" % itm)
@@ -235,8 +251,17 @@ class RoadCBA(GenericRoadCBA):
             if "scale" in self.params_clean[itm].columns:
                 if self.verbose:
                     print("Changing scale of %s" % itm)
-                self.params_clean[itm]["value"] = \
-                    self.params_clean[itm].value * self.params_clean[itm].scale
+
+                if itm in ['r_acc_c', 'r_acc_d']:
+                    # special treatment of accidents
+                    acc_types = ['fatal', 'severe_injury', 'light_injury']
+                    self.params_clean[itm][acc_types] = \
+                        self.params_clean[itm][acc_types].multiply(
+                            self.params_clean[itm]['scale'], axis='index')
+                else:
+                    self.params_clean[itm]["value"] = \
+                                                self.params_clean[itm].value \
+                                                * self.params_clean[itm].scale
                 self.params_clean[itm].drop(columns=["scale"], inplace=True)
 
         self.params_clean['c_op']['lower_usage'] =\
@@ -315,7 +340,7 @@ class RoadCBA(GenericRoadCBA):
         self._wrangle_ghg()
         self._wrangle_emissions()
         self._wrangle_noise()
-
+        self._wrangle_accidents()
     def _wrangle_vtts(self):
         """
         Average the value of travel time savings over everything other
@@ -464,10 +489,38 @@ class RoadCBA(GenericRoadCBA):
 
     def _wrangle_noise(self):
         b = 'c_noise'
-        self.params_clean[b] = self.params_clean[b].set_index(['vehicle',
-                                                               'environment'])
+        self.params_clean[b] = self.params_clean[b]\
+                                        .set_index(['vehicle', 'environment'])\
+                                        .sort_index()
+
+    def _wrangle_accidents(self):
+        b = 'r_acc_c'
+        # self.params_clean[b] = self.params_clean[b].melt(
+        #     id_vars='accident_rate_name',
+        #     value_vars=['fatal', 'severe_injury',
+        #                 'light_injury'],
+        #     var_name='accident_type'
+        # ).set_index(['accident_rate_name', 'accident_type']).sort_index()
+        self.params_clean[b].set_index('accident_rate_name', inplace=True)
+
+        b = 'r_acc_d'
+        # self.params_clean[b] = self.params_clean[b].melt(
+        #     id_vars=['road_type', 'road_layout'],
+        #     value_vars=['fatal', 'severe_injury',
+        #                 'light_injury'],
+        #     var_name='accident_type'
+        # ).set_index(['road_type', 'road_layout', 'accident_type']).sort_index()
+        self.params_clean[b].set_index(['road_type', 'road_layout'],
+                                       inplace=True)
+
+        c = 'c_acc'
+        self.params_clean[c].set_index('accident_type', inplace=True)
 
     def prepare_parameters(self):
+        if not self.acc_loaded:
+            print("Custom accident rates not loaded.")
+            return
+
         self._clean_parameters()
         self._wrangle_cpi()
         self._adjust_price_level()
@@ -664,7 +717,7 @@ class RoadCBA(GenericRoadCBA):
             print("Creating time series for benefits' unit costs...")
 
         for b in ["c_op", "vtts", "voc_l", 'voc_t', 'c_fuel', 'c_em',
-                  'c_noise']:
+                  'c_noise', 'c_acc']:
             if self.verbose:
                 print("    Creating: %s" % b)
             # set up empty dataframe
@@ -715,7 +768,6 @@ class RoadCBA(GenericRoadCBA):
 
         # greenhouse gases have a fixed time evolution
         b = 'c_ghg'
-
         r_ghg = self.params_clean['r_ghg']
         c_ghg = self.params_clean['c_ghg'][['value']]
 
@@ -1011,6 +1063,56 @@ class RoadCBA(GenericRoadCBA):
         self.B1[b] = self.B1[b].reorder_levels(lvl_order).sort_index()
 
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
+    def _compute_accidents(self):
+
+        # accident-affecting columns of road parameters
+        RP_acc = self.RP[['section_type', 'road_type',
+                          'road_layout', 'acc_rate_name']]
+
+        secs_default = pd.merge(RP_acc[RP_acc['acc_rate_name'] == 'default'],
+                                    self.params_clean['r_acc_d'],
+                                    left_on=['road_type', 'road_layout'],
+                                    right_index=True,
+                                    how='left')
+        secs_custom = pd.merge(RP_acc[RP_acc['acc_rate_name'] != 'default'],
+                               self.params_clean['r_acc_c'],
+                               left_on=['acc_rate_name'],
+                               right_index=True,
+                               how='left')
+
+        secs_acc = pd.concat([secs_default, secs_custom]).sort_index()
+        secs_acc = secs_acc[['fatal', 'severe_injury', 'light_injury']]
+        secs_acc = pd.DataFrame(secs_acc.stack(),
+                                columns=['value'])
+        secs_acc.index.names = ['id_road_section', 'variant', 'accident_type']
+        secs_acc = secs_acc.reset_index()
+
+        secs_acc0 = secs_acc.loc[secs_acc['variant'] == 0].drop(
+            columns=['variant'])
+        secs_acc0 = secs_acc0.set_index(['id_road_section', 'accident_type'])
+
+        secs_acc1 = secs_acc.loc[secs_acc['variant'] == 1].drop(
+            columns=['variant'])
+        secs_acc1 = secs_acc1.set_index(['id_road_section', 'accident_type'])
+
+        # unit accident rate on section
+        r_acc_0 = pd.DataFrame(np.outer(secs_acc0['value'],
+                                        np.ones_like(self.yrs)),
+                               index=secs_acc0.index,
+                               columns=self.yrs)
+        r_acc_1 = pd.DataFrame(np.outer(secs_acc1['value'],
+                                        np.ones_like(self.yrs)),
+                               index=secs_acc1.index,
+                               columns=self.yrs)
+
+        b = 'c_acc'
+        self.B0[b] = self.I0 * self.L0 * r_acc_0 * self.UC['c_acc'] * DAYS_YEAR
+        self.B1[b] = self.I1 * self.L1 * r_acc_1 * self.UC['c_acc'] * DAYS_YEAR
+
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
+
 
     def perform_economic_analysis(self):
         raise NotImplementedError("Function perform_economic_analysis is "

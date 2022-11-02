@@ -651,6 +651,9 @@ class RoadCBA(GenericRoadCBA):
             self.params_clean['conv_fac'].loc['aggregate', 'value'])['value']
 
         self.C_eco = self.C_fin.multiply(cf, axis='index')
+        self.C_eco_tot = pd.DataFrame(self.C_eco.sum(1), columns=["value"])
+
+        self.NC["capex"] = self.C_eco.sum()
 
     def compute_opex(self):
         """Create a dataframe of operation costs (OPEX)."""

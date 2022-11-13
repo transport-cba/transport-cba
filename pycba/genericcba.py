@@ -86,16 +86,19 @@ class GenericCBA(object):
 
         self.C_fin = None       # CAPEX financial
         self.C_eco = None       # CAPEX economic
-        self.O0_fin = None      # OPEX financial in 0th variant
-        self.O0_eco = None      # OPEX economic in 0th variant
-        self.O1_fin = None      # OPEX financial in 1st variant
-        self.O1_eco = None      # OPEX economic in 1st variant
+        self.O0_fin = {}      # OPEX financial in 0th variant
+        self.O0_eco = {}      # OPEX economic in 0th variant
+        self.O1_fin = {}      # OPEX financial in 1st variant
+        self.O1_eco = {}      # OPEX economic in 1st variant
+        self.I0_fin = {}        # income financial in 0th variant
+        self.I1_fin = {}        # income financial in 1st variant
 
         self.UC = {}            # unit costs
         self.B0 = {}            # benefits in 0th variant
         self.B1 = {}            # benefits in 1st variant
         self.NB = {}            # net benefits
         self.NC = {}            # net costs
+        self.NI = {}            # net income
 
         # economic indicators
         self.ENPV = None

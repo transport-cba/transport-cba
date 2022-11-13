@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import numpy_financial as npf
 from pycba.roads import GenericRoadCBA
 
 DAYS_YEAR = 365.0
@@ -85,14 +86,25 @@ class RoadCBA(GenericRoadCBA):
         self.ACCELERATION_COLUMNS = ['exit_intravilan','roundabout_intravilan',
                     'roundabout_extravilan', 'intersection_intravilan',
                     'intersection_extravilan', 'interchange']
-        self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t', 'c_ghg',
+        self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t', 'vfts',
+                                     'c_ghg',
                                      'c_em', 'c_noise', 'c_acc']
+
+        # extravilan toll section types - vehicles tolled if they cross
+        # the entire toll section
+        self.TSTYPES_E = ['nonparallel', 'parallell', 'motorway']
+        # intravilan toll section types - vehicles tolled if they cross
+        # a part of toll section
+        self.TSTYPES_I = ['other/intravilan']
+        self.TOLLED_VEHICLES = ['mgv', 'hgv', 'bus']
+
         # self.PRICE_LEVEL_ADJUSTED = ["c_op", "toll_op",
         #           "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]
 
         # OPII v 3.0 dataframes for road CBA
         self.RP = None                  # road parameters
         self.acc_loaded = False         # flag for accident rates
+        self.toll_parameters = None
 
         self.L0 = None
         self.L1 = None
@@ -120,6 +132,12 @@ class RoadCBA(GenericRoadCBA):
         """
         self.params_raw['r_acc_c'] = df_acc_rates.copy()
         self.acc_loaded = True
+
+    def read_toll_section_types(self, df_toll_parameters):
+        """
+        Load toll section parameters from a dataframe.
+        """
+        self.toll_parameters = df_toll_parameters.copy()
 
     def _read_raw_parameters(self):
         """Load all parameter dataframes"""
@@ -179,12 +197,18 @@ class RoadCBA(GenericRoadCBA):
         self.params_raw["c_op"] = \
             pd.read_excel(self.paramfile,
                           sheet_name="operation_cost")
-        self.params_raw['occ_p'] = \
+        self.params_raw["c_toll"] = \
             pd.read_excel(self.paramfile,
-                          sheet_name="passenger_occupancy")
+                          sheet_name="toll_operation")
+        self.params_raw['i_toll'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="toll_revenue")
         self.params_raw['r_tp'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="trip_purpose")
+        self.params_raw['occ_p'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="passenger_occupancy")
         self.params_raw['vtts'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="vtts")
@@ -194,6 +218,9 @@ class RoadCBA(GenericRoadCBA):
         self.params_raw['voc_l'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="voc_l")
+        self.params_raw['vfts'] = \
+            pd.read_excel(self.paramfile,
+                          sheet_name="vfts")
         self.params_raw['r_fuel'] = \
             pd.read_excel(self.paramfile,
                           sheet_name="fuel_ratio")
@@ -333,10 +360,12 @@ class RoadCBA(GenericRoadCBA):
         self.params_clean['c_op'] = self.params_clean['c_op'].set_index(
             ["section_type", "surface", "condition", "lower_usage"]
         )
+        self._wrangle_toll()
 
         self._wrangle_vtts()
         self._wrangle_fuel()
         self._wrangle_voc()
+        self._wrangle_vfts()
         self._wrangle_ghg()
         self._wrangle_emissions()
         self._wrangle_noise()
@@ -385,6 +414,16 @@ class RoadCBA(GenericRoadCBA):
         voc_t = self.params_clean['voc_t']
         voc_t = voc_t.set_index(['vehicle', 'fuel'])
         self.params_clean['voc_t'] = voc_t.copy()
+
+    def _wrangle_vfts(self):
+        # wrangle so that the ouput is more general and in pricniple allows
+        # to consider the average load of different vehicle categories
+        vfts = self.params_clean['vfts'].set_index('substance')
+        vfts = pd.concat([vfts, vfts])
+        vfts.index = ['mgv', 'hgv']
+        vfts.index.name = 'vehicle'
+
+        self.params_clean['vfts'] = vfts.copy()
 
     def _wrangle_fuel(self):
         """
@@ -515,6 +554,20 @@ class RoadCBA(GenericRoadCBA):
 
         c = 'c_acc'
         self.params_clean[c].set_index('accident_type', inplace=True)
+
+    def _wrangle_toll(self):
+        self.params_clean['i_toll'] = \
+            self.params_clean['i_toll'].melt(
+                id_vars='vehicle',
+                value_vars=['motorway', 'parallel',
+                            'nonparallel', 'other/intravilan'],
+                var_name='toll_section_type')
+
+        self.params_clean['i_toll']['price_level'] = 2021
+        self.params_clean['i_toll'].set_index(['vehicle', 'toll_section_type'],
+                                              inplace=True)
+
+        self.params_clean['c_toll'].set_index('item', inplace=True)
 
     def prepare_parameters(self):
         if not self.acc_loaded:
@@ -690,10 +743,11 @@ class RoadCBA(GenericRoadCBA):
                                index=RA.index,
                                columns=self.yrs)
             # save to dataframe of financial operating costs
+            c = 'maintenance'
             if variant == 0:
-                self.O0_fin = (RA * UC).dropna()
+                self.O0_fin[c] = (RA * UC).dropna()
             else:
-                self.O1_fin = (RA * UC).dropna()
+                self.O1_fin[c] = (RA * UC).dropna()
 
         # toll system operating costs
         # NOT IMPLEMENTED
@@ -701,11 +755,11 @@ class RoadCBA(GenericRoadCBA):
         # apply the aggregate conversion factor
         cf = self.params_clean['conv_fac'].loc['aggregate', 'value']
 
-        self.O0_eco = self.O0_fin * cf
-        self.O1_eco = self.O1_fin * cf
-        self.NC["opex"] = self.O1_eco.sum() - self.O0_eco.sum()
-
-    # compute areas
+        c = 'maintenance'
+        self.O0_eco[c] = self.O0_fin[c] * cf
+        self.O1_eco[c] = self.O1_fin[c] * cf
+        self.NC["opex_maintenance"] = self.O1_eco[c].sum() \
+                                      - self.O0_eco[c].sum()
 
     # =====
     # Preparation functions
@@ -720,7 +774,7 @@ class RoadCBA(GenericRoadCBA):
             print("Creating time series for benefits' unit costs...")
 
         for b in ["c_op", "vtts", "voc_l", 'voc_t', 'c_fuel', 'c_em',
-                  'c_noise', 'c_acc']:
+                  'c_noise', 'c_acc', 'vfts', 'c_toll', 'i_toll']:
             if self.verbose:
                 print("    Creating: %s" % b)
             # set up empty dataframe
@@ -856,6 +910,15 @@ class RoadCBA(GenericRoadCBA):
         b = 'voc_t'
         self.B0[b] = self.UC[b] * self.RF * (self.T0 * self.I0) * DAYS_YEAR
         self.B1[b] = self.UC[b] * self.RF * (self.T1 * self.I1) * DAYS_YEAR
+        self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
+    def _compute_vfts(self):
+        assert self.T0 is not None, "Compute travel time first."
+        assert self.T1 is not None, "Compute travel time first."
+
+        b = ['vfts']
+        self.B0[b] = (self.UC[b] * self.T0 * self.I0).dropna() * DAYS_YEAR
+        self.B1[b] = (self.UC[b] * self.T1 * self.I1).dropna() * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
     def _compute_fuel_cost(self):
@@ -1071,16 +1134,16 @@ class RoadCBA(GenericRoadCBA):
 
         # accident-affecting columns of road parameters
         RP_acc = self.RP[['section_type', 'road_type',
-                          'road_layout', 'acc_rate_name']]
+                          'road_layout', 'accident_rate_name']]
 
-        secs_default = pd.merge(RP_acc[RP_acc['acc_rate_name'] == 'default'],
+        secs_default = pd.merge(RP_acc[RP_acc['accident_rate_name'] == 'default'],
                                     self.params_clean['r_acc_d'],
                                     left_on=['road_type', 'road_layout'],
                                     right_index=True,
                                     how='left')
-        secs_custom = pd.merge(RP_acc[RP_acc['acc_rate_name'] != 'default'],
+        secs_custom = pd.merge(RP_acc[RP_acc['accident_rate_name'] != 'default'],
                                self.params_clean['r_acc_c'],
-                               left_on=['acc_rate_name'],
+                               left_on=['accident_rate_name'],
                                right_index=True,
                                how='left')
 
@@ -1115,7 +1178,144 @@ class RoadCBA(GenericRoadCBA):
 
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
+    def _compute_toll(self):
+        assert self.toll_parameters is not None, 'Load toll section' \
+                                                 ' parameters first.'
+        # need to merge data on road section (tolled length, intensity),
+        # toll section id and toll section type
 
+        # number of tolled vehicles - variant 0
+        I_tolled_0 = pd.merge(
+            self.I0.reset_index(),
+            self.RP.loc[self.RP['variant'] == 0,
+                            ['toll_section']].reset_index(),
+            how='left',
+            on='id_road_section').dropna().rename(
+            columns={'toll_section': 'toll_section_id'})
+
+        I_tolled_0 = pd.merge(
+            I_tolled_0,
+            self.toll_parameters[
+                ['toll_section_id', 'toll_section_type_0']].dropna(),
+            how='left',
+            on='toll_section_id').rename(
+            columns={'toll_section_type_0': 'toll_section_type'})
+
+        I_tolled_0e = I_tolled_0[
+            I_tolled_0['toll_section_type'].isin(self.TSTYPES_E) &
+            I_tolled_0['vehicle'].isin(self.TOLLED_VEHICLES)].copy()
+        I_tolled_0i = I_tolled_0[
+            I_tolled_0['toll_section_type'].isin(self.TSTYPES_I)&
+            I_tolled_0['vehicle'].isin(self.TOLLED_VEHICLES)].copy()
+
+        # number of tolled vehicles
+        I_tolled_1 = pd.merge(
+            self.I1.reset_index(),
+            self.RP.loc[self.RP['variant'] == 1,
+                        ['toll_section']].reset_index(),
+            how='left',
+            on='id_road_section').dropna().rename(
+            columns={'toll_section': 'toll_section_id'})
+
+        I_tolled_1 = pd.merge(
+            I_tolled_1,
+            self.toll_parameters[
+                ['toll_section_id', 'toll_section_type_1']].dropna(),
+            how='left',
+            on='toll_section_id').rename(
+            columns={'toll_section_type_1': 'toll_section_type'})
+
+        I_tolled_1e = I_tolled_1[
+            I_tolled_1['toll_section_type'].isin(self.TSTYPES_E) &
+            I_tolled_1['vehicle'].isin(self.TOLLED_VEHICLES)].copy()
+        I_tolled_1i = I_tolled_1[
+            I_tolled_1['toll_section_type'].isin(self.TSTYPES_I)&
+            I_tolled_1['vehicle'].isin(self.TOLLED_VEHICLES)].copy()
+
+        # compute the number of tolled vehicles
+        I_tolled_0e = I_tolled_0e.drop(columns=['id_road_section']).groupby(
+            ['toll_section_id', 'toll_section_type', 'vehicle']).min()
+        I_tolled_1e = I_tolled_1e.drop(columns=['id_road_section']).groupby(
+            ['toll_section_id', 'toll_section_type', 'vehicle']).min()
+
+        I_tolled_0i = I_tolled_0i.drop(columns=['id_road_section']).groupby(
+            ['toll_section_id', 'toll_section_type', 'vehicle']).max()
+        I_tolled_1i = I_tolled_1i.drop(columns=['id_road_section']).groupby(
+            ['toll_section_id', 'toll_section_type', 'vehicle']).max()
+
+        # compute operation cost
+        # depends only on the number of toll transactions
+        c = 'toll_operation'
+        self.O0_fin[c] = \
+            pd.concat([I_tolled_0e, I_tolled_0i]).multiply(
+                self.UC['c_toll'].loc['toll_transaction_cost']) \
+            * DAYS_YEAR
+        self.O1_fin[c] = \
+            pd.concat([I_tolled_1e, I_tolled_1i]).multiply(
+                self.UC['c_toll'].loc['toll_transaction_cost']) \
+            * DAYS_YEAR
+
+        # apply the aggregate conversion factor
+        cf = self.params_clean['conv_fac'].loc['aggregate', 'value']
+
+        self.O0_eco[c] = self.O0_fin[c] * cf
+        self.O1_eco[c] = self.O1_fin[c] * cf
+        self.NC["opex_toll"] = self.O1_eco[c].sum() \
+                               - self.O0_eco[c].sum()
+
+
+        # compute income from toll operation
+        # toll section length
+        toll_L0 = self.RP.loc[self.RP['variant'] == 0,
+                              ['toll_section', 'length']
+                             ].groupby('toll_section').sum()
+        toll_L0.index.name = 'toll_section_id'
+
+        toll_L1 = self.RP.loc[self.RP['variant'] == 1,
+                              ['toll_section', 'length']
+                             ].groupby('toll_section').sum()
+        toll_L1.index.name = 'toll_section_id'
+
+        toll_L0 = pd.DataFrame(np.outer(toll_L0.length,
+                                        np.ones_like(self.yrs)),
+                               columns=self.yrs,
+                               index=toll_L0.index)
+
+        toll_L1 = pd.DataFrame(np.outer(toll_L1.length,
+                                        np.ones_like(self.yrs)),
+                               columns=self.yrs,
+                               index=toll_L1.index)
+
+        # extravilan only, as toll is not paid on intravilan/other sections
+        self.I0_fin['toll'] = I_tolled_0e * toll_L0 * self.UC['i_toll'] \
+                                * DAYS_YEAR
+        self.I1_fin['toll'] = I_tolled_1e * toll_L1 * self.UC['i_toll'] \
+                                * DAYS_YEAR
+
+        self.NI["income_toll"] = self.I1_fin['toll'].sum() \
+                               - self.I0_fin['toll'].sum()
+
+
+    def compute_economic_indicators(self):
+        """Perform economic analysis"""
+        assert self.NB is not None, "Compute economic benefits first."
+
+        if self.verbose:
+            print("\nComputing ENPV, ERR, BCR...")
+        self.df_eco = pd.DataFrame(self.NB).T
+        self.df_eco = pd.concat(\
+            [-pd.DataFrame(self.NC).T, pd.DataFrame(self.NB).T],\
+                   keys=["cost", "benefit"], names=["type", "item"])\
+                   .round(2)
+
+        self.df_enpv = pd.DataFrame(self.df_eco\
+            .apply(lambda x: npf.npv(self.r_eco, x), axis=1).round(2), \
+            columns=["value"])
+
+        self.ENPV = npf.npv(self.r_eco, self.df_eco.sum())
+        self.ERR = npf.irr(self.df_eco.sum())
+        self.EBCR = (self.df_enpv.loc["benefit"].sum() \
+            / -self.df_enpv.loc["cost"].sum()).value
 
     def perform_economic_analysis(self):
         raise NotImplementedError("Function perform_economic_analysis is "

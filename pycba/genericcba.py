@@ -75,6 +75,11 @@ class GenericCBA(object):
         self.yr_f = self.yr_i + self.N_yr - 1
         self.yrs = [i for i in range(self.yr_i, self.yr_i + self.N_yr)]
 
+        self.yr_op = None
+        self.N_yr_bld = None
+        self.N_yr_op = None
+        self.yrs_op = None
+
         self.yr_pl = price_level
 
         self.r_fin = fin_discount_rate

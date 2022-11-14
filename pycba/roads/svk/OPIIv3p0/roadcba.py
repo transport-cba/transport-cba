@@ -1295,6 +1295,8 @@ class RoadCBA(GenericRoadCBA):
                                                  ' parameters first.'
         # need to merge data on road section (tolled length, intensity),
         # toll section id and toll section type
+        self.RP.reset_index(inplace=True)
+        self.RP.set_index('id_road_section', inplace=True)
 
         # number of tolled vehicles - variant 0
         I_tolled_0 = pd.merge(
@@ -1407,6 +1409,8 @@ class RoadCBA(GenericRoadCBA):
         self.NI["income_toll"] = self.I1_fin['toll'].sum() \
                                - self.I0_fin['toll'].sum()
 
+        self.RP.reset_index(inplace=True)
+        self.RP.set_index(['id_road_section', 'variant'], inplace=True)
 
     def compute_economic_indicators(self):
         """Perform economic analysis"""

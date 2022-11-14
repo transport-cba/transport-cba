@@ -119,6 +119,8 @@ class RoadCBA(GenericRoadCBA):
         self.QF0 = None  # quantity of fuel burnt on a section in variant 0
         self.QF1 = None  # quantity of fuel burnt on a section in variant 1
 
+        self.RV = None      # deterioration, residual value
+
     def run_cba(self):
         self.read_parameters()
         self.prepare_parameters()
@@ -352,9 +354,17 @@ class RoadCBA(GenericRoadCBA):
         # conversion factors
         capex_conv_fac = pd.merge(
             self.params_clean['res_val'][['default_conversion_factor']],
-            self.params_clean['conv_fac'], how='left',
-            left_on='default_conversion_factor', right_index=True)[['value']]
+            self.params_clean['conv_fac'],
+            how='left',
+            left_on='default_conversion_factor',
+            right_index=True)[['value']]
         self.params_clean['capex_conv_fac'] = capex_conv_fac
+
+        # residual value
+        self.params_clean['res_val']['included'] = \
+            self.params_clean['res_val']['included'].astype(bool)
+        self.params_clean['res_val']['lifetime'] = \
+            self.params_clean['res_val']['lifetime'].replace({'inf':np.inf})
 
         # opex
         self.params_clean['c_op'] = self.params_clean['c_op'].set_index(
@@ -618,8 +628,15 @@ class RoadCBA(GenericRoadCBA):
         self.V1 = df_vel_1.copy()
 
         # assign core variables
-        #self._assign_core_variables()
         self._wrangle_inputs()
+        self._assign_core_variables()
+
+    def _assign_core_variables(self):
+        self.yr_op = int(self.C_fin.columns[-1]) + 1
+        self.N_yr_bld = len(self.C_fin.columns)
+        self.N_yr_op = self.N_yr - self.N_yr_bld
+        self.yrs_op = \
+            np.arange(self.yr_i + self.N_yr_bld, self.yr_i + self.N_yr)
 
     def _wrangle_inputs(self):
         """
@@ -683,6 +700,7 @@ class RoadCBA(GenericRoadCBA):
             self.C_fin[self.yr_i] += self.C_fin[yrs_bef].sum(1)
             self.C_fin = self.C_fin[yrs_aft]
 
+
     def compute_capex(self):
         """
         Apply conversion factors to compute CAPEX for the economic analysis.
@@ -694,6 +712,7 @@ class RoadCBA(GenericRoadCBA):
 
         # add columns for all years of evaluation period
         self.C_fin = pd.DataFrame(self.C_fin, columns=self.yrs).fillna(0)
+        self.C_fin_tot = pd.DataFrame(self.C_fin.sum(1), columns=["value"])
 
         # assign conversion factors to items of capex dataframe
         cf = pd.merge(self.C_fin,
@@ -707,6 +726,98 @@ class RoadCBA(GenericRoadCBA):
         self.C_eco_tot = pd.DataFrame(self.C_eco.sum(1), columns=["value"])
 
         self.NC["capex"] = self.C_eco.sum()
+
+    def _compute_deterioration(self):
+        """Create a dataframe of replacement necessity and economic/financial
+        useful lifetime"""
+        if self.verbose:
+            print("Computing deterioration...")
+
+        RV = self.params_clean['res_val'].copy()
+        RV = RV[RV['included']].drop(columns=['included',
+                                              'default_conversion_factor'])
+        RV["op_period"] = self.N_yr_op
+        # convention: replacement happens in the last year of lifetime
+        RV["replace"] = np.where(RV['lifetime'] <= RV['op_period'], 1, 0)
+        # ration of remaining usefulness
+        RV["rem_ratio"] = \
+            np.where(RV['replace'] == 1,
+                     (2 * RV['lifetime'] - RV['op_period']) / RV['lifetime'],
+                     (RV['lifetime'] - RV['op_period']) / RV['lifetime']
+                     ).round(2)
+
+        # fill land
+        RV["rem_ratio"].fillna(1.0, inplace=True)
+        self.RV = RV.copy()
+
+    def compute_residual_value(self):
+        """Create a dataframe of residual values by each element"""
+        if self.verbose:
+            print("Computing residual value...")
+
+        assert self.RV is not None, 'Compute deterioration first.'
+
+        # residual value in financial terms - income
+        RV_fin = self.RV.merge(self.C_fin_tot,
+                               how="left",
+                               on="item").fillna(0)
+        RV_fin["res_value"] = np.where(RV_fin['replace'] == 0,
+                                       RV_fin['value'] * RV_fin['rem_ratio'],
+                                       RV_fin['value'] * RV_fin['rem_ratio'] \
+                                       * RV_fin['replacement_cost_ratio'])
+        self.I1_fin['res_val'] = pd.DataFrame(0,
+                                              index=RV_fin.index,
+                                              columns=self.yrs)
+        self.I1_fin['res_val'][self.yrs[-1]] = RV_fin['res_value']
+
+        # residual value in economic terms - benefit
+        RV_eco = self.RV.merge(self.C_eco_tot,
+                              how="left",
+                              on="item")
+        RV_eco["res_value"] = np.where(RV_eco['replace'] == 0,
+                                       RV_eco['value'] * RV_eco['rem_ratio'],
+                                       RV_eco['value'] * RV_eco['rem_ratio'] \
+                                       * RV_eco['replacement_cost_ratio'])
+
+        self.B1['res_val'] = pd.DataFrame(0,
+                                          index=RV_eco.index,
+                                          columns=self.yrs)
+        self.B1['res_val'][self.yrs[-1]] = RV_eco['res_value']
+
+        # save to net income dictionary
+        self.NI['res_val'] = self.I1_fin['res_val'].sum()
+        # save to net benefit dictionary
+        self.NB['res_val'] = self.B1['res_val'].sum()
+
+    def compute_replacements(self):
+        if self.verbose:
+            print("Computing replacements costs...")
+
+        assert self.RV is not None, 'Compute deterioration first.'
+
+        repl_fin = pd.DataFrame(columns=list(self.yrs))
+        repl_eco = pd.DataFrame(columns=list(self.yrs))
+
+        for itm in self.RV[self.RV['replace'] == 1].index:
+            # replacement year
+            yr_repl = self.yr_op - 1 + self.RV.loc[itm, 'lifetime']
+
+            # financial
+            repl_fin.loc[itm] = 0
+            repl_value = self.C_fin_tot.loc[itm, 'value'] \
+                         * self.RV.loc[itm, 'replacement_cost_ratio']
+            repl_fin.loc[itm, yr_repl] = repl_value
+
+            # economic
+            repl_eco.loc[itm] = 0
+            repl_value = self.C_eco_tot.loc[itm, 'value'] \
+                         * self.RV.loc[itm, 'replacement_cost_ratio']
+            repl_eco.loc[itm, yr_repl] = repl_value
+
+        self.O1_fin['replacements'] = repl_fin.copy()
+        self.O1_eco['replacements'] = repl_eco.copy()
+
+        self.NC['replacements'] = self.O1_eco['replacements'].sum()
 
     def compute_opex(self):
         """Create a dataframe of operation costs (OPEX)."""
@@ -845,7 +956,8 @@ class RoadCBA(GenericRoadCBA):
 
         self.L = pd.DataFrame(\
             np.outer(self.RP.length, np.ones_like(self.yrs)), \
-            columns=self.yrs, index=self.RP.index)
+            columns=self.yrs,
+            index=self.RP.index)
 
         self.L0 = self.L.loc[(slice(None), 0), :]
         self.L0 = self.L0.reset_index().drop(columns='variant')\

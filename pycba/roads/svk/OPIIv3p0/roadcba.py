@@ -860,13 +860,20 @@ class RoadCBA(GenericRoadCBA):
             else:
                 self.O1_fin[c] = (RA * UC).dropna()
 
+        c = 'maintenance'
+        # set OPEX values for construction years in variant 1
+        # construction years
+        yrs_c = np.setdiff1d(self.yrs, self.yrs_op)
+        m_c= self.O0_fin[c].loc[:, yrs_c]
+        m_op = self.O1_fin[c].loc[:, self.yrs_op]
+        self.O1_fin[c] = m_c.join(m_op, how='outer').fillna(0)
+
         # toll system operating costs
         # NOT IMPLEMENTED
 
         # apply the aggregate conversion factor
         cf = self.params_clean['conv_fac'].loc['aggregate', 'value']
 
-        c = 'maintenance'
         self.O0_eco[c] = self.O0_fin[c] * cf
         self.O1_eco[c] = self.O1_fin[c] * cf
         self.NC["opex_maintenance"] = self.O1_eco[c].sum() \

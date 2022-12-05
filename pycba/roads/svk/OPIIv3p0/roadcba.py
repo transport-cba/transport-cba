@@ -121,10 +121,6 @@ class RoadCBA(GenericRoadCBA):
 
         self.RV = None      # deterioration, residual value
 
-    def run_cba(self):
-        self.read_parameters()
-        self.prepare_parameters()
-
     def read_parameters(self):
         self._read_raw_parameters()
 
@@ -1419,6 +1415,41 @@ class RoadCBA(GenericRoadCBA):
         self.RP.reset_index(inplace=True)
         self.RP.set_index(['id_road_section', 'variant'], inplace=True)
 
+    def compute_costs_benefits(self):
+        """Compute financial and economic costs and benefits"""
+        # TODO: integrity verification
+
+        # unit costs
+        if self.verbose:
+            print("Preparing unit values...")
+        self._create_unit_cost_matrix()
+
+        # costs
+        if self.verbose:
+            print("Computing costs...")
+        self.compute_capex()
+        self.compute_opex()
+        self._compute_deterioration()
+        self.compute_replacements()
+        self.compute_residual_value()
+
+        # benefits
+        if self.verbose:
+            print("Computing benefits...")
+        self._create_length_matrix()
+        self._create_fuel_ratio_matrix()
+        self._compute_travel_time_matrix()
+
+        self._compute_vtts()
+        self._compute_voc()
+        self._compute_fuel_consumption()
+        self._compute_fuel_cost()
+        self._compute_greenhouse()
+        self._compute_emissions()
+        self._compute_noise()
+        self._compute_accidents()
+        self._compute_toll()
+
     def compute_economic_indicators(self):
         """Perform economic analysis"""
         assert self.NB is not None, "Compute economic benefits first."
@@ -1441,9 +1472,10 @@ class RoadCBA(GenericRoadCBA):
             / -self.df_enpv.loc["cost"].sum()).value
 
     def perform_economic_analysis(self):
-        raise NotImplementedError("Function perform_economic_analysis is "
-                                  "supposed to be defined in the specific "
-                                  "implementation")
+        """Wrapper method for running the complete economic analysis."""
+        self.prepare_parameters()
+        self.compute_costs_benefits()
+        self.compute_economic_indicators()
 
     def print_economic_indicators(self):
         super().print_economic_indicators()

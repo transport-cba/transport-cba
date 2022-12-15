@@ -309,11 +309,6 @@ class RoadCBA(GenericRoadCBA):
                                                 * self.params_clean[itm].scale
                 self.params_clean[itm].drop(columns=["scale"], inplace=True)
 
-        self.params_clean['c_op']['lower_usage'] =\
-            self.params_clean['c_op']['lower_usage'].astype(bool)
-        self.params_clean['c_op'].set_index(['section_type', 'surface',
-                                             'condition', 'lower_usage'])
-
     def _wrangle_cpi(self, infl=0.02, yr_min=2000, yr_max=2100):
         """
         Fill in missing values and compute cumulative inflation
@@ -365,29 +360,10 @@ class RoadCBA(GenericRoadCBA):
 
     def _wrangle_parameters(self):
         """Wrangle parameters into form suitable for computation."""
-        # TODO replace with calls to functions
-
-        # conversion factors
-        capex_conv_fac = pd.merge(
-            self.params_clean['res_val'][['default_conversion_factor']],
-            self.params_clean['conv_fac'],
-            how='left',
-            left_on='default_conversion_factor',
-            right_index=True)[['value']]
-        self.params_clean['capex_conv_fac'] = capex_conv_fac
-
-        # residual value
-        self.params_clean['res_val']['included'] = \
-            self.params_clean['res_val']['included'].astype(bool)
-        self.params_clean['res_val']['lifetime'] = \
-            self.params_clean['res_val']['lifetime'].replace({'inf':np.inf})
-
-        # opex
-        self.params_clean['c_op'] = self.params_clean['c_op'].set_index(
-            ["section_type", "surface", "condition", "lower_usage"]
-        )
+        self._wrangle_conv_fac()
+        self._wrangle_res_val()
+        self._wrangle_opex()
         self._wrangle_toll()
-
         self._wrangle_vtts()
         self._wrangle_fuel()
         self._wrangle_voc()
@@ -396,6 +372,30 @@ class RoadCBA(GenericRoadCBA):
         self._wrangle_emissions()
         self._wrangle_noise()
         self._wrangle_accidents()
+
+    def _wrangle_conv_fac(self):
+        capex_conv_fac = pd.merge(
+            self.params_clean['res_val'][['default_conversion_factor']],
+            self.params_clean['conv_fac'],
+            how='left',
+            left_on='default_conversion_factor',
+            right_index=True)[['value']]
+        self.params_clean['capex_conv_fac'] = capex_conv_fac
+
+    def _wrangle_res_val(self):
+        # residual value
+        self.params_clean['res_val']['included'] = \
+            self.params_clean['res_val']['included'].astype(bool)
+        self.params_clean['res_val']['lifetime'] = \
+            self.params_clean['res_val']['lifetime'].replace({'inf': np.inf})
+
+    def _wrangle_opex(self):
+        self.params_clean['c_op']['lower_usage'] = \
+            self.params_clean['c_op']['lower_usage'].astype(bool)
+        self.params_clean['c_op'].set_index(['section_type', 'surface',
+                                             'condition', 'lower_usage'],
+                                            inplace=True)
+
     def _wrangle_vtts(self):
         """
         Average the value of travel time savings over everything other

@@ -89,6 +89,13 @@ class RoadCBA(GenericRoadCBA):
         self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t', 'vfts',
                                      'c_ghg',
                                      'c_em', 'c_noise', 'c_acc']
+        self.PARAMS_FULL_SET = ['res_val', 'conv_fac', 'c_op', 'c_toll',
+                                     'i_toll', 'r_tp', 'occ_p', 'vtts',
+                                     'voc_t', 'voc_l', 'vfts', 'r_fuel',
+                                     'fuel_coeffs', 'fuel_acc', 'fuel_rho',
+                                     'c_fuel', 'r_ghg', 'c_ghg', 'r_em',
+                                     'c_em', 'c_noise', 'r_acc_d', 'r_acc_c',
+                                     'c_acc']
 
         # extravilan toll section types - vehicles tolled if they cross
         # the entire toll section
@@ -261,6 +268,19 @@ class RoadCBA(GenericRoadCBA):
         Incorporate scale into values.
         Remove unimportant columns. Populate the params_clean dictionary
         """
+
+        # print warning if any of the full set of parameters are not present
+        missing_params = np.setdiff1d(self.PARAMS_FULL_SET,
+                                      list(self.params_raw.keys()))
+        if missing_params.size > 0:
+            print("\n",
+                  "Warning:\n",
+                  "Following parameters were not provided at the "
+                  "moment of parameter cleaning: \n",
+                  missing_params,
+                  "\n"
+                  )
+
         if self.verbose:
             print("Cleaning parameters...")
 

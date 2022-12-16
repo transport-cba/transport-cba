@@ -442,7 +442,7 @@ class RoadCBA(GenericRoadCBA):
         self.params_clean['voc_t'] = voc_t.copy()
 
     def _wrangle_vfts(self):
-        # wrangle so that the ouput is more general and in pricniple allows
+        # wrangle so that the output is more general and in principle allows
         # to consider the average load of different vehicle categories
         vfts = self.params_clean['vfts'].set_index('substance')
         vfts = pd.concat([vfts, vfts])
@@ -644,10 +644,17 @@ class RoadCBA(GenericRoadCBA):
         self.V1 = df_vel_1.copy()
 
         # assign core variables
-        self._wrangle_inputs()
+        self._wrangle_capex()
         self._assign_core_variables()
 
+        self._wrangle_inputs()
+
     def _assign_core_variables(self):
+        """
+        Assigns the variables describing the time frame of the economic
+        evaluation.
+        """
+
         self.yr_op = int(self.C_fin.columns[-1]) + 1
         self.N_yr_bld = len(self.C_fin.columns)
         self.N_yr_op = self.N_yr - self.N_yr_bld
@@ -666,7 +673,7 @@ class RoadCBA(GenericRoadCBA):
         self.V0 = self._wrangle_intensity_velocity(self.V0, 'V0')
         self.V1 = self._wrangle_intensity_velocity(self.V1, 'V1')
 
-        self._wrangle_capex()
+        # self._wrangle_capex()
 
         # fill 0 to acceleration coefficients
         self.RP[self.ACCELERATION_COLUMNS] = \
@@ -686,6 +693,10 @@ class RoadCBA(GenericRoadCBA):
                     .set_index(['id_road_section', 'vehicle'])
         df_out.columns = df_out.columns.astype(int)
 
+        # erase values during construction period
+        df_out.loc[:, self.C_fin.columns] = np.nan
+
+        # fill values until the end of the evaluation period
         if df_out.columns[-1] < self.yr_f:
             if self.verbose:
                 print("Warning: "

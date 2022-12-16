@@ -993,6 +993,10 @@ class RoadCBA(GenericRoadCBA):
             columns=self.yrs,
             index=self.RP.index)
 
+        # set index on RP back to original columns
+        self.RP.reset_index(inplace=True)
+        self.RP.set_index('id_road_section', inplace=True)
+
         self.L0 = self.L.loc[(slice(None), 0), :]
         self.L0 = self.L0.reset_index().drop(columns='variant')\
                       .set_index('id_road_section')
@@ -1132,7 +1136,7 @@ class RoadCBA(GenericRoadCBA):
         # acceleration-dependent part
         ##
 
-        self.RP = self.RP.reset_index().set_index('id_road_section')
+        # self.RP = self.RP.reset_index().set_index('id_road_section')
 
         # time matrix of acceleration ratios - variant 0, 1
         acceleration_mat0 = self.RP.loc[self.RP['variant'] == 0,
@@ -1142,9 +1146,9 @@ class RoadCBA(GenericRoadCBA):
                                         self.ACCELERATION_COLUMNS] \
                                     .stack().to_frame()
 
-        # reindex to the original columns
-        self.RP = self.RP.reset_index()\
-                         .set_index(['id_road_section', 'variant'])
+        # # reindex to the original columns
+        # self.RP = self.RP.reset_index()\
+        #                  .set_index(['id_road_section', 'variant'])
 
         acceleration_mat0.columns = ['ratio']
         acceleration_mat0.index.names = ['id_road_section', 'acceleration']
@@ -1210,9 +1214,26 @@ class RoadCBA(GenericRoadCBA):
         assert self.QF0 is not None, "Compute matrix of fuel consumption (QF0) first."
         assert self.QF1 is not None, "Compute matrix of fuel consumption (QF1) first."
 
+        # # merge environment variable onto intensity dataframe
+        # I0_env = pd.merge(self.I0.reset_index(),
+        #                   self.RP.loc[(slice(None), 0), :] \
+        #                   .reset_index()[['id_road_section', 'environment']],
+        #                   how='left',
+        #                   on='id_road_section')
+        # I0_env.set_index(['id_road_section', 'vehicle', 'environment'],
+        #                  inplace=True)
+        #
+        # I1_env = pd.merge(self.I1.reset_index(),
+        #                   self.RP.loc[(slice(None), 1), :] \
+        #                   .reset_index()[['id_road_section', 'environment']],
+        #                   how='left',
+        #                   on='id_road_section')
+        # I1_env.set_index(['id_road_section', 'vehicle', 'environment'],
+        #                  inplace=True)
+
         # merge environment variable onto intensity dataframe
         I0_env = pd.merge(self.I0.reset_index(),
-                          self.RP.loc[(slice(None), 0), :] \
+                          self.RP[self.RP['variant'] == 0] \
                           .reset_index()[['id_road_section', 'environment']],
                           how='left',
                           on='id_road_section')
@@ -1220,7 +1241,7 @@ class RoadCBA(GenericRoadCBA):
                          inplace=True)
 
         I1_env = pd.merge(self.I1.reset_index(),
-                          self.RP.loc[(slice(None), 1), :] \
+                          self.RP[self.RP['variant'] == 1] \
                           .reset_index()[['id_road_section', 'environment']],
                           how='left',
                           on='id_road_section')
@@ -1251,16 +1272,16 @@ class RoadCBA(GenericRoadCBA):
 
         # merge environment variable onto intensity dataframe
         I0_env = pd.merge(self.I0.reset_index(),
-                          self.RP.loc[(slice(None), 0), :]\
-                            .reset_index()[['id_road_section', 'environment']],
+                          self.RP[self.RP['variant'] == 0] \
+                          .reset_index()[['id_road_section', 'environment']],
                           how='left',
                           on='id_road_section')
         I0_env.set_index(['id_road_section', 'vehicle', 'environment'],
                          inplace=True)
 
         I1_env = pd.merge(self.I1.reset_index(),
-                          self.RP.loc[(slice(None), 1), :] \
-                            .reset_index()[['id_road_section', 'environment']],
+                          self.RP[self.RP['variant'] == 1] \
+                          .reset_index()[['id_road_section', 'environment']],
                           how='left',
                           on='id_road_section')
         I1_env.set_index(['id_road_section', 'vehicle', 'environment'],
@@ -1278,9 +1299,14 @@ class RoadCBA(GenericRoadCBA):
 
     def _compute_accidents(self):
 
+        self.RP = self.RP.reset_index()\
+                                .set_index(['id_road_section', 'variant'])
+
         # accident-affecting columns of road parameters
         RP_acc = self.RP[['section_type', 'road_type',
                           'road_layout', 'accident_rate_name']]
+
+        self.RP = self.RP.reset_index().set_index('id_road_section')
 
         secs_default = pd.merge(RP_acc[RP_acc['accident_rate_name'] == 'default'],
                                     self.params_clean['r_acc_d'],
@@ -1329,8 +1355,8 @@ class RoadCBA(GenericRoadCBA):
                                                  ' parameters first.'
         # need to merge data on road section (tolled length, intensity),
         # toll section id and toll section type
-        self.RP.reset_index(inplace=True)
-        self.RP.set_index('id_road_section', inplace=True)
+        # self.RP.reset_index(inplace=True)
+        # self.RP.set_index('id_road_section', inplace=True)
 
         # number of tolled vehicles - variant 0
         I_tolled_0 = pd.merge(
@@ -1443,8 +1469,8 @@ class RoadCBA(GenericRoadCBA):
         self.NI["income_toll"] = self.I1_fin['toll'].sum() \
                                - self.I0_fin['toll'].sum()
 
-        self.RP.reset_index(inplace=True)
-        self.RP.set_index(['id_road_section', 'variant'], inplace=True)
+        # self.RP.reset_index(inplace=True)
+        # self.RP.set_index(['id_road_section', 'variant'], inplace=True)
 
     def compute_costs_benefits(self):
         """Compute financial and economic costs and benefits"""

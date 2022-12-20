@@ -35,7 +35,7 @@ def load_lietavska_lucka():
                                    sheet_name='toll_parameters')
 
     # read intensity and velocity
-    # intensity and velcoity are in model link form to make the
+    # intensity and velocity are in model link form to make the
     # comparison with original CBA easier.
     # They must be manipulated into form suitable for pycba.
     df_int_0 = pd.read_excel(input_file,

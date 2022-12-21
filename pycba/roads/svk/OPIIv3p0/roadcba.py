@@ -16,10 +16,36 @@ class RoadCBA(GenericRoadCBA):
 
     from pycba.roads.svk.OPIIv3p0 import RoadCBA
     """
+    # OPIIv3p0 specific part
     INPUT_REQUIRED_SHEETS = ['capex', 'road_parameters',
-                              'toll_parameters', 'custom_accident_rates',
-                              'intensities_0', 'intensities_1',
-                              'velocities_0', 'velocities_1']
+                             'toll_parameters', 'custom_accident_rates',
+                             'intensities_0', 'intensities_1',
+                             'velocities_0', 'velocities_1']
+    ACCELERATION_COLUMNS = ['exit_intravilan', 'roundabout_intravilan',
+                            'roundabout_extravilan',
+                            'intersection_intravilan',
+                            'intersection_extravilan', 'interchange']
+
+    # extravilan toll section types - vehicles tolled if they cross
+    # the entire toll section
+    TSTYPES_E = ['nonparallel', 'parallell', 'motorway']
+    # intravilan toll section types - vehicles tolled if they cross
+    # a part of toll section
+    TSTYPES_I = ['other/intravilan']
+    TOLLED_VEHICLES = ['mgv', 'hgv', 'bus']
+
+    # OPIIv3p0 parameters behaviour
+    PARAMS_FULL_SET = ['res_val', 'conv_fac', 'c_op', 'c_toll',
+                       'i_toll', 'r_tp', 'occ_p', 'vtts',
+                       'voc_t', 'voc_l', 'vfts', 'r_fuel',
+                       'fuel_coeffs', 'fuel_acc', 'fuel_rho',
+                       'c_fuel', 'r_ghg', 'c_ghg', 'r_em',
+                       'c_em', 'c_noise', 'r_acc_d', 'r_acc_c',
+                       'c_acc']
+    PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t', 'vfts',
+                                 'c_ghg',
+                                 'c_em', 'c_noise', 'c_acc']
+
     def __init__(self,
                  init_year,
                  evaluation_period,
@@ -83,30 +109,6 @@ class RoadCBA(GenericRoadCBA):
                          "svk_road_cba_parameters_OPIIv3p0_2022.xlsx"
         self.params_raw = {}
         self.params_clean = {}
-
-        # OPIIv3p0 specific part
-        # OPIIv3p0 parameters behaviour
-        self.ACCELERATION_COLUMNS = ['exit_intravilan','roundabout_intravilan',
-                    'roundabout_extravilan', 'intersection_intravilan',
-                    'intersection_extravilan', 'interchange']
-        self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t', 'vfts',
-                                     'c_ghg',
-                                     'c_em', 'c_noise', 'c_acc']
-        self.PARAMS_FULL_SET = ['res_val', 'conv_fac', 'c_op', 'c_toll',
-                                     'i_toll', 'r_tp', 'occ_p', 'vtts',
-                                     'voc_t', 'voc_l', 'vfts', 'r_fuel',
-                                     'fuel_coeffs', 'fuel_acc', 'fuel_rho',
-                                     'c_fuel', 'r_ghg', 'c_ghg', 'r_em',
-                                     'c_em', 'c_noise', 'r_acc_d', 'r_acc_c',
-                                     'c_acc']
-
-        # extravilan toll section types - vehicles tolled if they cross
-        # the entire toll section
-        self.TSTYPES_E = ['nonparallel', 'parallell', 'motorway']
-        # intravilan toll section types - vehicles tolled if they cross
-        # a part of toll section
-        self.TSTYPES_I = ['other/intravilan']
-        self.TOLLED_VEHICLES = ['mgv', 'hgv', 'bus']
 
         # self.PRICE_LEVEL_ADJUSTED = ["c_op", "toll_op",
         #           "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]

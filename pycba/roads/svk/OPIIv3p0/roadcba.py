@@ -16,7 +16,10 @@ class RoadCBA(GenericRoadCBA):
 
     from pycba.roads.svk.OPIIv3p0 import RoadCBA
     """
-
+    INPUT_REQUIRED_SHEETS = ['capex', 'road_parameters',
+                              'toll_parameters', 'custom_accident_rates',
+                              'intensities_0', 'intensities_1',
+                              'velocities_0', 'velocities_1']
     def __init__(self,
                  init_year,
                  evaluation_period,
@@ -706,6 +709,42 @@ class RoadCBA(GenericRoadCBA):
         df_out = df_out[self.yrs].fillna(0)
 
         return df_out
+
+    def read_project_inputs_excel(self, file_path):
+
+        if self.verbose:
+            print("Reading project inputs from Excel file...")
+
+        # read all sheets from the Excel file
+        input_dict = pd.read_excel(file_path, sheet_name=None)
+
+        # check for missing sheets
+        missing_sheets = np.setdiff1d(self.INPUT_REQUIRED_SHEETS,
+                                      list(input_dict.keys()))
+
+        if missing_sheets.size > 0:
+            raise ValueError('Input file is missing sheets: {missing}'.format(
+                missing=repr(list(missing_sheets))
+            ))
+
+        self.RP = input_dict['road_parameters'].set_index('id_road_section')
+        self.RP['lower_usage'] = self.RP['lower_usage'].astype(bool)
+        self.C_fin = input_dict['capex'].set_index('item')
+
+        self.I0 = input_dict['intensities_0'].set_index('id_road_section')
+        self.I1 = input_dict['intensities_1'].set_index('id_road_section')
+        self.V0 = input_dict['velocities_0'].set_index('id_road_section')
+        self.V1 = input_dict['velocities_1'].set_index('id_road_section')
+
+        # assign core variables
+        self._wrangle_capex()
+        self._assign_core_variables()
+
+        self._wrangle_inputs()
+
+        # read accident rates and toll parameters
+        self.read_custom_accident_rates(input_dict['custom_accident_rates'])
+        self.read_toll_section_types(input_dict['toll_parameters'])
 
     def _wrangle_capex(self):
         """Collect capex."""

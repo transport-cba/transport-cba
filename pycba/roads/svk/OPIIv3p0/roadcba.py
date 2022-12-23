@@ -1107,7 +1107,7 @@ class RoadCBA(GenericRoadCBA):
         assert self.T0 is not None, "Compute travel time first."
         assert self.T1 is not None, "Compute travel time first."
 
-        b = ['vfts']
+        b = 'vfts'
         self.B0[b] = (self.UC[b] * self.T0 * self.I0).dropna() * DAYS_YEAR
         self.B1[b] = (self.UC[b] * self.T1 * self.I1).dropna() * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()

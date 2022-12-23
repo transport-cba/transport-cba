@@ -25,7 +25,7 @@ Required project inputs:
 
 Options to load project inputs:
 * separately as Pandas dataframes
-* Excel file with sheet names: `capex, 'road_parameters, toll_parameters, 
+* Excel file with sheet names: `capex, road_parameters, toll_parameters, 
 custom_accident_rates, intensities_0, intensities_1, velocities_0, velocities_1`
 
 ## Outputs

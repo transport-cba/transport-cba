@@ -243,7 +243,7 @@ class ParamContainer(object):
         c = "fuel_coeffs"
         self.df_clean[c] = pd.merge(self.df_clean[c].reset_index(), 
             self.fuel_rho.drop(columns=["unit"]), how="left", on="fuel")\
-            .set_index(["vehicle","fuel"])
+            .set_index(["vehicle", "fuel"])
         
         # multiply polynomial coefficients by density
         for itm in ["a0", "a1", "a2", "a3"]:

@@ -43,9 +43,12 @@ Values might differ slightly.
 >>> cba.economic_analysis()
 >>> res = rcba.economic_indicators()
 >>> res
-
-'|    |     Value | Unit   |\n|---:|----------:|:-------|\n|  0 | 3.33583   | M EUR  |\n|  1 | 0.0562048 | %      |\n|  2 | 1.07576   | nan    |'
 ```
+|    |     Value | Unit   |
+|---:|----------:|:-------|
+|  0 | 3.33583   | M EUR  |
+|  1 | 0.0562048 | %      |
+|  2 | 1.07576   | nan    |
 
 
 

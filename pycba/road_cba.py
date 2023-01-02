@@ -600,6 +600,7 @@ class RoadCBA(ParamContainer):
         self.compute_costs_benefits()
         self.compute_economic_indicators()
         print("Done. Time: %.2f s." % (time.time() - ti))
+        return self.economic_indicators()
 
 
     def compute_costs_benefits(self):

@@ -8,10 +8,6 @@ It offers a significantly wider options for analysis of alternatives
 than Excel.
 
 
-## Dependencies
-Numpy, Pandas
-
-
 ## Inputs
 Required project inputs:
 * capital expenditures (CAPEX) with pre-defined items

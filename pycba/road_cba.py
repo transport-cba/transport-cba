@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from numpy.matlib import repmat
+import numpy_financial as npf
 import time
 from .param_container import ParamContainer
 
@@ -163,11 +164,14 @@ class RoadCBA(ParamContainer):
 
     def read_project_inputs(self, df_road_params, df_capex,\
         df_int_0, df_int_1, df_vel_0, df_vel_1,):
-        """Read the dataframes
-        * road parameters
-        * capital investment (CAPEX)
-        * intensities in variants 0 and 1
-        * velocities in variant 0 and 1"""
+        """Read the input dataframes.
+
+        Inputs
+        ------
+        - road parameters
+        - capital investment (CAPEX)
+        - intensities in variants 0 and 1
+        - velocities in variant 0 and 1"""
         if self.verbose:
             print("Reading project inputs from df...")
         self.RP = df_road_params
@@ -204,20 +208,20 @@ class RoadCBA(ParamContainer):
         self._wrangle_inputs()
 
 
-    def replace_intensities(self, df_int_0, df_int_1):
-        if self.verbose:
-            print("Replacing intensities...")
-        self.I0 = df_int_0
-        self.I1 = df_int_1
-
-
-    def replace_velocities(self, df_vel_0, df_vel_1):
-        if self.verbose:
-            print("Replacing velocities...")
-        self.V0 = df_vel_0
-        self.V1 = df_vel_1
-
-
+#    def replace_intensities(self, df_int_0, df_int_1):
+#        if self.verbose:
+#            print("Replacing intensities...")
+#        self.I0 = df_int_0
+#        self.I1 = df_int_1
+#
+#
+#    def replace_velocities(self, df_vel_0, df_vel_1):
+#        if self.verbose:
+#            print("Replacing velocities...")
+#        self.V0 = df_vel_0
+#        self.V1 = df_vel_1
+#
+#
 #    def read_project_inputs_csv(self,
 #                                file_road_params,
 #                                file_capex,
@@ -586,13 +590,13 @@ class RoadCBA(ParamContainer):
 
 
     # =====
-    # Functions to compute economic benefits
+    # Functions to compute economic benefits and costs
     # =====
-    def economic_analysis(self):
+    def economic_analysis(self, param_source=None):
         """Wrapping method for the overall computation
         of costs, benefits and overall indicators (ENPV, ERR, BCR)."""
         ti = time.time()
-        self.prepare_parameters()
+        self.prepare_parameters(source=param_source)
         self.compute_costs_benefits()
         self.compute_economic_indicators()
         print("Done. Time: %.2f s." % (time.time() - ti))
@@ -641,25 +645,33 @@ class RoadCBA(ParamContainer):
         if self.verbose:
             print("\nComputing ENPV, ERR, BCR...")
         self.df_eco = pd.DataFrame(self.NB).T
-        self.df_eco = pd.concat(\
+        self.df_eco = pd.concat(
             [-pd.DataFrame(self.NC).T, pd.DataFrame(self.NB).T],\
-                   keys=["cost", "benefit"], names=["type", "item"])\
-                   .round(2)
+                   keys=["cost", "benefit"], names=["type", "item"]
+        ).round(2)
 
-        self.df_enpv = pd.DataFrame(self.df_eco\
-            .apply(lambda x: np.npv(self.r_eco, x), axis=1).round(2), \
-            columns=["value"])
+        self.df_enpv = pd.DataFrame(
+            self.df_eco.apply(
+                lambda x: np.npv(self.r_eco, x), axis=1
+            ).round(2), columns=["value"]
+        )
 
-        self.ENPV = np.npv(self.r_eco, self.df_eco.sum())
-        self.ERR = np.irr(self.df_eco.sum())
+        self.ENPV = npf.npv(self.r_eco, self.df_eco.sum())
+        self.ERR = npf.irr(self.df_eco.sum())
         self.EBCR = (self.df_enpv.loc["benefit"].sum() \
             / -self.df_enpv.loc["cost"].sum()).value
 
-    
-    def print_economic_indicators(self):
-        print("ENPV: %.2f M %s" % (self.ENPV / 1e6, self.currency.upper()))
-        print("ERR : %.2f %%" % (self.ERR * 100))
-        print("BCR : %.2f" % self.EBCR)
+   
+    def economic_indicators(self):
+        return pd.DataFrame({"Value": [self.ENPV/1e6, self.ERR, self.EBCR],
+            "Unit": ["M "+self.currency.upper(), "%", ""]},
+            index=["ENPV", "ERR", "BCR"])
+
+
+#    def print_economic_indicators(self):
+#        print("ENPV: %.2f M %s" % (self.ENPV / 1e6, self.currency.upper()))
+#        print("ERR : %.2f%%" % (self.ERR * 100))
+#        print("BCR : %.2f" % self.EBCR)
 
 
     def _compute_vtts(self):
@@ -739,7 +751,7 @@ class RoadCBA(ParamContainer):
             .set_index(["id_section", "vehicle", "fuel"])
         L = L.sort_index()
 
-        # quantity of fuel, 0th variant
+        # quantity of fuel, variant 0
         self.QF0 = pd.DataFrame(columns=self.yrs, index=L.loc[self.secs_0].index)
         for ind, _ in self.QF0.iterrows():
             ids, veh, f = ind
@@ -747,7 +759,7 @@ class RoadCBA(ParamContainer):
                 .map(lambda v: vel2cons(\
                 self.df_clean["fuel_coeffs"].loc[(veh, f)], v)) * L.loc[ind]
 
-        # quantity of fuel in 1st variant
+        # quantity of fuel, variant 1
         self.QF1 = pd.DataFrame(columns=self.yrs, index=L.loc[self.secs_1].index)
         for ind, _ in self.QF1.iterrows():
             ids, veh, f = ind
@@ -835,6 +847,10 @@ class RoadCBA(ParamContainer):
         self.B1[b] = CN * self.I1 * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
+
+    # saving results
+    def to_excel(self):
+        raise NotImplementedError()
 
     # =====
     # Financial analysis

@@ -656,21 +656,23 @@ class RoadCBA(ParamContainer):
             ).round(2), columns=["value"]
         )
 
+        # compute economic indicators
         self.ENPV = npf.npv(self.r_eco, self.df_eco.sum())
         self.ERR = npf.irr(self.df_eco.sum())
-        self.EBCR = (self.df_enpv.loc["benefit"].sum() \
-            / -self.df_enpv.loc["cost"].sum()).value
-
-   
-    def economic_indicators(self):
-        """Pretty-print economic indicators"""
-        vals = [(self.ENPV/1e6), self.ERR * 100.0, self.EBCR]
+        self.EBCR = (self.df_enpv.loc["benefit"].sum() / -self.df_enpv.loc["cost"].sum()).value
+        
+        # format economic indicators
+        vals = [self.ENPV / 1e6, self.ERR * 100.0, self.EBCR]
         vals = [np.round(val, 3) for val in vals]
-        return pd.DataFrame({
+        self.cba_indicators = pd.DataFrame({
             "Quantity": ["ENPV", "ERR", "BCR"],
             "Unit": ["M "+self.currency.upper(), "%", ""],
             "Value": vals,
         })
+
+   
+    def economic_indicators(self):
+        return self.cba_indicators
 
 
     def _compute_vtts(self):
@@ -843,12 +845,15 @@ class RoadCBA(ParamContainer):
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
-    # saving to excel
+    """
+    Saving data
+    """
     def save_results_to_excel(self, fname_res="cba_results.xlsx"):
         with pd.ExcelWriter(fname_res) as writer:
             for benefit in ["vtts", "voc", "fuel", "accidents", "ghg", "emissions", "noise"]:
                 self.B0[benefit].to_excel(writer, sheet_name=f"{benefit}_0")
                 self.B1[benefit].to_excel(writer, sheet_name=f"{benefit}_1")
+            self.cba_indicators.to_excel(writer, sheet_name="indicators")
         
         print(f"CBA output saved to {fname_res}")     
 

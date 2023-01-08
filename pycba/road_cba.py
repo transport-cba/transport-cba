@@ -841,6 +841,28 @@ class RoadCBA(ParamContainer):
         self.B0[b] = CN * self.I0 * DAYS_YEAR
         self.B1[b] = CN * self.I1 * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
+
+
+    # saving to excel
+    def save_results_to_excel(self, fname_res="cba_results.xlsx"):
+        with pd.ExcelWriter(fname_res) as writer:
+            for benefit in ["vtts", "voc", "fuel", "accidents", "ghg", "emissions", "noise"]:
+                self.B0[benefit].to_excel(writer, sheet_name=f"{benefit}_0")
+                self.B1[benefit].to_excel(writer, sheet_name=f"{benefit}_1")
+        
+        print(f"CBA output saved to {fname_res}")     
+
+
+    def save_inputs_to_excel(self, fname_out="cba_inputs.xlsx"):
+        """save the input sheets to excel"""
+        with pd.ExcelWriter(fname_out) as writer:
+            self.RP.to_excel(writer, sheet_name="road_params")
+            self.C_fin.to_excel(writer, sheet_name="capex")
+            self.I0.to_excel(writer, sheet_name="intensities_0")
+            self.I1.to_excel(writer, sheet_name="intensities_1")
+            self.V0.to_excel(writer, sheet_name="velocities_0")
+            self.V1.to_excel(writer, sheet_name="velocities_1")
+        print(f"CBA inputs saved to {fname_out}")
             
 
     # =====

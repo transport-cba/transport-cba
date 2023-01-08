@@ -11,5 +11,13 @@ b = load_sample_bypass()
 
 cba = RoadCBA(2020, 2020, "svk", verbose=True)
 cba.read_project_inputs(*b.values())
+
+# test saving inputs
+cba.save_inputs_to_excel()
+
+# compute cba
 res = cba.economic_analysis()
 print(res)
+
+# save outputs
+cba.save_results_to_excel()

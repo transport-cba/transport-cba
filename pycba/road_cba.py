@@ -13,36 +13,36 @@ DAYS_YEAR = 365.0
 
 class RoadCBA(ParamContainer):
     def __init__(self,
-                 init_year,
-                 price_level,
-                 country,
-                 period=30,
-                 fin_discount_factor=0.04,
-                 eco_discount_factor=0.05,
-                 currency="EUR",
-                 verbose=False
-                 ):
+            init_year,
+            price_level,
+            country,
+            period=30,
+            fin_discount_factor=0.04,
+            eco_discount_factor=0.05,
+            currency="EUR",
+            verbose=False
+        ):
         """
-        Input
-        -----
-        - init_year: initial year of construction and economic analysis
-        - price_level: 
-        - country: country code
-        - period: number of years for the economic analysis
-        - fin_discount_factor: discount factor for financial analysis
-        - eco_discount_factor: discount factor for economic analysis
+        Inputs
+        ======
+        - init_year : int, initial year of construction
+        - price_level : int, year of economic analysis
+        - country : str, country code
+        - period : int, number of years for the economic analysis
+        - fin_discount_factor : float, discount factor for financial analysis
+        - eco_discount_factor : float, discount factor for economic analysis
 
         """
-        self.yr_i = init_year
+        self.yr_init = init_year
         self.N_yr = period
-        self.yr_f = self.yr_i + self.N_yr - 1
+        self.yr_end = self.yr_init + self.N_yr - 1
         self.pl = price_level
-        if self.yr_i != self.pl:
+        if self.yr_init != self.pl:
             print("Warning: start year not same as price level.")
-        self.N_yr_bld = None
+        self.N_yr_build = None
         self.N_yr_op = None
         self.yr_op = None
-        self.yrs = np.arange(self.yr_i, self.yr_i + self.N_yr)
+        self.yrs = np.arange(self.yr_init, self.yr_init + self.N_yr)
 
         self.r_fin = fin_discount_factor
         self.r_eco = eco_discount_factor
@@ -96,7 +96,7 @@ class RoadCBA(ParamContainer):
         else:
             raise NotImplementedError("To add soon.")
 
-        super().adjust_cpi(yr_max=self.yr_f)
+        super().adjust_cpi(yr_max=self.yr_end)
         super().clean_params()
         super().adjust_price_level()
         super().wrangle_params()
@@ -112,10 +112,10 @@ class RoadCBA(ParamContainer):
         and various arrays of sections"""
         if self.C_fin is not None:
             self.yr_op = int(self.C_fin.columns[-1]) + 1
-            self.N_yr_bld = len(self.C_fin.columns)
-            self.N_yr_op = self.N_yr - self.N_yr_bld
+            self.N_yr_build = len(self.C_fin.columns)
+            self.N_yr_op = self.N_yr - self.N_yr_build
             self.yrs_op = \
-                np.arange(self.yr_i + self.N_yr_bld, self.yr_i + self.N_yr)
+                np.arange(self.yr_init + self.N_yr_build, self.yr_init + self.N_yr)
 
             self.secs = self.RP.index
             self.secs_0 = self.RP[self.RP.variant_0 == 1].index
@@ -141,22 +141,22 @@ class RoadCBA(ParamContainer):
         self.I0 = self.I0.loc[self.secs_0]
         self.V0 = self.V0.loc[self.secs_0]
 
-        if self.I0.columns[-1] < self.yr_f and self.verbose:
+        if self.I0.columns[-1] < self.yr_end and self.verbose:
             print("Warning: I0 not forecast until the end of period,\
                 filling by zeros.")
         self.I0 = self.I0[self.yrs].fillna(0)
 
-        if self.I1.columns[-1] < self.yr_f and self.verbose:
+        if self.I1.columns[-1] < self.yr_end and self.verbose:
             print("Warning: I0 not forecast until the end of period,\
                 filling by zeros.")
         self.I1 = self.I1[self.yrs].fillna(0)
 
-        if self.V0.columns[-1] < self.yr_f and self.verbose:
+        if self.V0.columns[-1] < self.yr_end and self.verbose:
             print("Warning: V0 not forecast until the end of period,\
                 filling by zeros.")
         self.V0 = self.V0[self.yrs].fillna(0)
 
-        if self.V1.columns[-1] < self.yr_f and self.verbose:
+        if self.V1.columns[-1] < self.yr_end and self.verbose:
             print("Warning: V0 not forecast until the end of period,\
                 filling by zeros.")
         self.V1 = self.V1[self.yrs].fillna(0)
@@ -329,12 +329,12 @@ class RoadCBA(ParamContainer):
 
         # collect investment before the first year
         capex_yrs = self.C_fin.columns
-        if len(capex_yrs[capex_yrs < self.yr_i]) != 0:
+        if len(capex_yrs[capex_yrs < self.yr_init]) != 0:
             if self.verbose:
                 print("Squeezing CAPEX into the given economic period...")
-            yrs_bef = capex_yrs[capex_yrs < self.yr_i]
-            yrs_aft = capex_yrs[capex_yrs >= self.yr_i]
-            self.C_fin[self.yr_i] += self.C_fin[yrs_bef].sum(1)
+            yrs_bef = capex_yrs[capex_yrs < self.yr_init]
+            yrs_aft = capex_yrs[capex_yrs >= self.yr_init]
+            self.C_fin[self.yr_init] += self.C_fin[yrs_bef].sum(1)
             self.C_fin = self.C_fin[yrs_aft]
 
 
@@ -497,10 +497,10 @@ class RoadCBA(ParamContainer):
                 print("    Creating: %s" % b)
             self.UC[b] = \
                 pd.DataFrame(columns=self.yrs, index=self.df_clean[b].index)
-            self.UC[b][self.yr_i] = self.df_clean[b].value
+            self.UC[b][self.yr_init] = self.df_clean[b].value
             for yr in self.yrs[1:]:
                 self.UC[b][yr] = \
-                    self.UC[b][self.yr_i]# * self.cpi.loc[yr, "cpi_index"]
+                    self.UC[b][self.yr_init]# * self.cpi.loc[yr, "cpi_index"]
                 if "gdp_growth_adjustment" in self.df_clean[b].columns:
                     self.UC[b][yr] = self.UC[b][yr] \
                     * (1.0 + self.gdp_growth.loc[yr].gdp_growth \
@@ -514,7 +514,7 @@ class RoadCBA(ParamContainer):
         # greenhouse unit cost computed separately due to its structure
         b = "c_ghg"
         self.UC[b] = \
-            pd.DataFrame(self.df_clean[b].loc[self.yr_i:self.yr_f, "value"])
+            pd.DataFrame(self.df_clean[b].loc[self.yr_init:self.yr_end, "value"])
         self.UC[b].columns = ["co2eq"] 
         self.UC[b] = self.UC[b].T
 
@@ -708,7 +708,7 @@ class RoadCBA(ParamContainer):
             print("    Computing accidents...")
         assert self.L is not None, "Compute length matrix first."
 
-        b = "acc"
+        b = "accidents"
         scale = 1e-8
         LL = self.L.merge(\
             self.RP[["lanes", "environment", "category", "layout"]], \
@@ -720,7 +720,7 @@ class RoadCBA(ParamContainer):
 
         UCA = (LL * self.UC["c_acc"] * scale)\
             .droplevel(["layout", "lanes", "category", "environment"])\
-            .dropna(subset=[self.yr_i]).sort_index()
+            .dropna(subset=[self.yr_init]).sort_index()
 
         self.B0[b] = UCA * self.I0 * DAYS_YEAR
         self.B1[b] = UCA * self.I1 * DAYS_YEAR
@@ -755,8 +755,7 @@ class RoadCBA(ParamContainer):
         for ind, _ in self.QF0.iterrows():
             ids, veh, f = ind
             self.QF0.loc[(ids, veh, f)] = self.V0.loc[(ids, veh)]\
-                .map(lambda v: vel2cons(\
-                self.df_clean["fuel_coeffs"].loc[(veh, f)], v)) * L.loc[ind]
+                .map(lambda v: vel2cons(self.df_clean["fuel_coeffs"].loc[(veh, f)], v)) * L.loc[ind]
 
         # quantity of fuel, variant 1
         self.QF1 = pd.DataFrame(columns=self.yrs, index=L.loc[self.secs_1].index)
@@ -806,15 +805,15 @@ class RoadCBA(ParamContainer):
         assert self.QF0 is not None, "Compute matrix of fuel consumption (QF0) first."
         assert self.QF1 is not None, "Compute matrix of fuel consumption (QF1) first."
         
-        b = "em"
+        b = "emissions"
         RE = pd.DataFrame(repmat(self.df_clean["r_em"].value, self.N_yr, 1).T, 
                   columns=self.yrs, index=self.df_clean["r_em"].index)
 
         # UCE: unit cost of emissions in EUR/kg(fuel)
         UCE = RE * self.UC["c_em"]
-        UCE = UCE.groupby(["fuel","vehicle","environment"]).sum()
+        UCE = UCE.groupby(["fuel", "vehicle", "environment"]).sum()
         UCE = UCE.reset_index()\
-            .set_index(["environment","vehicle","fuel"]).sort_index()
+            .set_index(["environment", "vehicle", "fuel"]).sort_index()
 
         # add section ID
         UCE = UCE.reset_index().merge(self.RP.environment.reset_index(), \
@@ -822,10 +821,8 @@ class RoadCBA(ParamContainer):
             ["id_section", "environment", "vehicle", "fuel"]).sort_index()
         
         lvl_order = ["id_section", "vehicle", "fuel", "environment"]
-        self.B0[b] = (UCE * self.RF).reorder_levels(lvl_order).sort_index() \
-            * (self.QF0 * self.I0) * DAYS_YEAR
-        self.B1[b] = (UCE * self.RF).reorder_levels(lvl_order).sort_index() \
-            * (self.QF1 * self.I1) * DAYS_YEAR
+        self.B0[b] = (UCE * self.RF).reorder_levels(lvl_order).sort_index() * (self.QF0 * self.I0) * DAYS_YEAR
+        self.B1[b] = (UCE * self.RF).reorder_levels(lvl_order).sort_index() * (self.QF1 * self.I1) * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
 
 
@@ -839,17 +836,12 @@ class RoadCBA(ParamContainer):
         L = L.set_index(["id_section", "environment"])
         
         # CN: cost of noise in EUR
-        CN = (self.UC[b] * L).reorder_levels(\
-            ["id_section", "environment", "vehicle"]).sort_index()
+        CN = (self.UC[b] * L).reorder_levels(["id_section", "environment", "vehicle"]).sort_index()
 
         self.B0[b] = CN * self.I0 * DAYS_YEAR
         self.B1[b] = CN * self.I1 * DAYS_YEAR
         self.NB[b] = self.B0[b].sum() - self.B1[b].sum()
-
-
-    # saving results
-    def to_excel(self):
-        raise NotImplementedError()
+            
 
     # =====
     # Financial analysis
@@ -857,10 +849,3 @@ class RoadCBA(ParamContainer):
     def financial_analysis(self):
         """Perform financial analysis"""
         raise NotImplementedError()
-
-
-
-
-
-
-

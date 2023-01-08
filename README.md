@@ -36,10 +36,17 @@ Values might differ slightly.
 >>> from pycba import RoadCBA
 >>> from pycba.sample_projects import load_sample_bypass
 
->>> b = load_sample_bypass()
+>>> bypass = load_sample_bypass()
 
 >>> cba = RoadCBA(2020, 2020, "svk")
->>> cba.read_project_inputs(b["RP"], b["C_fin"], b["I0"], b["I1"], b["V0"], b["V1"])
+>>> cba.read_project_inputs(
+...     bypass["road_params"],
+...     bypass["capex"],
+...     bypass["intensities_0"],
+...     bypass["intensities_1"],
+...     bypass["velocities_0"],
+...     bypass["velocities_1"]
+... )
 >>> cba.economic_analysis()
 >>> res = rcba.economic_indicators()
 >>> res

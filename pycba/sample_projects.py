@@ -5,33 +5,58 @@ import pandas as pd
 import os
 
 
-def load_sample_bypass():
-    """Load a sample bypass from prepared csv's"""
+def load_sample_bypass_csv():
+    """Load a sample bypass from prepared csv's.
+    Old version, not used anymore."""
     dirn = os.path.dirname(__file__) + "/examples/"
     
     d = {}
-    d["RP"] = pd.read_csv(dirn + "bypass_road_params.csv", index_col=0)
-    d["C_fin"] = pd.read_csv(dirn + "bypass_capex.csv", index_col=[0, 1])
-    d["C_fin"].columns = d["C_fin"].columns.astype(int)
+    d["road_params"] = pd.read_csv(dirn + "bypass_road_params.csv", index_col=0)
+    d["capex"] = pd.read_csv(dirn + "bypass_capex.csv", index_col=[0, 1])
+    d["capex"].columns = d["capex"].columns.astype(int)
 
-    d["I0"] = pd.read_csv(dirn + "bypass_intensities_0.csv")
-    d["I1"] = pd.read_csv(dirn + "bypass_intensities_1.csv")
-    d["I0"].set_index(["id_section", "vehicle"], inplace=True)
-    d["I1"].set_index(["id_section", "vehicle"], inplace=True)
-    d["I0"].columns = d["I0"].columns.astype(int)
-    d["I1"].columns = d["I1"].columns.astype(int)
-    d["I0"] = d["I0"].sort_index()
-    d["I1"] = d["I1"].sort_index()
+    d["intensities_0"] = pd.read_csv(dirn + "bypass_intensities_0.csv")
+    d["intensities_1"] = pd.read_csv(dirn + "bypass_intensities_1.csv")
+    d["intensities_0"].set_index(["id_section", "vehicle"], inplace=True)
+    d["intensities_1"].set_index(["id_section", "vehicle"], inplace=True)
+    d["intensities_0"].columns = d["intensities_0"].columns.astype(int)
+    d["intensities_1"].columns = d["intensities_1"].columns.astype(int)
+    d["intensities_0"] = d["intensities_0"].sort_index()
+    d["intensities_1"] = d["intensities_1"].sort_index()
 
-    d["V0"] = pd.read_csv(dirn + "bypass_velocities_0.csv")
-    d["V1"] = pd.read_csv(dirn + "bypass_velocities_1.csv")
-    d["V0"].set_index(["id_section", "vehicle"], inplace=True)
-    d["V1"].set_index(["id_section", "vehicle"], inplace=True)
-    d["V0"].columns = d["V0"].columns.astype(int)
-    d["V1"].columns = d["V1"].columns.astype(int)
-    d["V0"] = d["V0"].sort_index()
-    d["V1"] = d["V1"].sort_index()
+    d["velocities_0"] = pd.read_csv(dirn + "bypass_velocities_0.csv")
+    d["velocities_1"] = pd.read_csv(dirn + "bypass_velocities_1.csv")
+    d["velocities_0"].set_index(["id_section", "vehicle"], inplace=True)
+    d["velocities_1"].set_index(["id_section", "vehicle"], inplace=True)
+    d["velocities_0"].columns = d["velocities_0"].columns.astype(int)
+    d["velocities_1"].columns = d["velocities_1"].columns.astype(int)
+    d["velocities_0"] = d["velocities_0"].sort_index()
+    d["velocities_1"] = d["velocities_1"].sort_index()
     
+    return d
+
+
+def load_sample_bypass():
+    """Load a sample bypass from prepared excel"""
+    dirn = os.path.dirname(__file__) + "/examples/"
+    fname = f"{dirn}/cba_sample_bypass.xlsx"
+    
+    d = {}
+    xls = pd.ExcelFile(fname)
+    d["road_params"] = xls.parse("road_params", index_col=0)
+    d["capex"] = xls.parse("capex").reset_index(drop=True)
+    d["capex"].set_index(['item', 'category'], inplace=True)
+
+    d["intensities_0"] = xls.parse("intensities_0").reset_index(drop=True)
+    d["intensities_0"].set_index(["id_section", "vehicle"], inplace=True)
+    d["intensities_1"] = xls.parse("intensities_1").reset_index(drop=True)
+    d["intensities_1"].set_index(["id_section", "vehicle"], inplace=True)
+    
+    d["velocities_0"] = xls.parse("velocities_0").reset_index(drop=True)
+    d["velocities_0"].set_index(["id_section", "vehicle"], inplace=True)
+    d["velocities_1"] = xls.parse("velocities_1").reset_index(drop=True)
+    d["velocities_1"].set_index(["id_section", "vehicle"], inplace=True)
+
     return d
 
 

@@ -162,8 +162,14 @@ class RoadCBA(ParamContainer):
         self.V1 = self.V1[self.yrs].fillna(0)
 
 
-    def read_project_inputs(self, df_road_params, df_capex,\
-        df_int_0, df_int_1, df_vel_0, df_vel_1,):
+    def read_project_inputs(self,
+            df_road_params,
+            df_capex,
+            df_int_0,
+            df_int_1,
+            df_vel_0,
+            df_vel_1
+        ):
         """Read the input dataframes.
 
         Inputs
@@ -176,17 +182,22 @@ class RoadCBA(ParamContainer):
             print("Reading project inputs from df...")
         self.RP = df_road_params
         self.C_fin = df_capex
+        self.C_fin.columns = self.C_fin.columns.astype(int)
         self.I0 = df_int_0
+        self.I0.columns = self.I0.columns.astype(int)
         self.I1 = df_int_1
+        self.I1.columns = self.I1.columns.astype(int)
         self.V0 = df_vel_0
+        self.V0.columns = self.V0.columns.astype(int)
         self.V1 = df_vel_1
+        self.V1.columns = self.V1.columns.astype(int)
 
         # assign core variables
         self._assign_core_variables()
         self._wrangle_inputs()
 
     
-    def read_project_inputs_xls(self, file_xls):
+    def read_project_inputs_excel(self, file_xls):
         assert file_xls.split(".")[-1] in ["xls", "xlsx"], \
             "Invalid file extension, expected xls or xlsx."
         if self.verbose:
@@ -208,20 +219,6 @@ class RoadCBA(ParamContainer):
         self._wrangle_inputs()
 
 
-#    def replace_intensities(self, df_int_0, df_int_1):
-#        if self.verbose:
-#            print("Replacing intensities...")
-#        self.I0 = df_int_0
-#        self.I1 = df_int_1
-#
-#
-#    def replace_velocities(self, df_vel_0, df_vel_1):
-#        if self.verbose:
-#            print("Replacing velocities...")
-#        self.V0 = df_vel_0
-#        self.V1 = df_vel_1
-#
-#
 #    def read_project_inputs_csv(self,
 #                                file_road_params,
 #                                file_capex,
@@ -295,7 +292,7 @@ class RoadCBA(ParamContainer):
             "environment", "width", "layout", "toll_sections"]
         assert self.RP is not None, "Road parameters not defined."
         assert set(self.RP.columns) == set(rp_cols), \
-            "Incorrect columns of road parameters dataframe."
+            f"Incorrect columns of road parameters dataframe. Current: {self.RP.columns}, required: {rp_cols}"
 
 #        capex_idx = ["land", "pavements", "bridges", "tunnels", "buildings",\
 #            "slope_stabilisation", "retaining_walls", "noise_barriers",\
@@ -599,7 +596,9 @@ class RoadCBA(ParamContainer):
         self.prepare_parameters(source=param_source)
         self.compute_costs_benefits()
         self.compute_economic_indicators()
-        print("Done. Time: %.2f s." % (time.time() - ti))
+
+        self.compute_time = time.time() - ti
+        print(f"Computation time: {self.compute_time} s.")
         return self.economic_indicators()
 
 
@@ -664,15 +663,14 @@ class RoadCBA(ParamContainer):
 
    
     def economic_indicators(self):
-        return pd.DataFrame({"Value": [self.ENPV/1e6, self.ERR, self.EBCR],
-            "Unit": ["M "+self.currency.upper(), "%", ""]},
-            index=["ENPV", "ERR", "BCR"])
-
-
-#    def print_economic_indicators(self):
-#        print("ENPV: %.2f M %s" % (self.ENPV / 1e6, self.currency.upper()))
-#        print("ERR : %.2f%%" % (self.ERR * 100))
-#        print("BCR : %.2f" % self.EBCR)
+        """Pretty-print economic indicators"""
+        vals = [(self.ENPV/1e6), self.ERR * 100.0, self.EBCR]
+        vals = [np.round(val, 3) for val in vals]
+        return pd.DataFrame({
+            "Quantity": ["ENPV", "ERR", "BCR"],
+            "Unit": ["M "+self.currency.upper(), "%", ""],
+            "Value": vals,
+        })
 
 
     def _compute_vtts(self):

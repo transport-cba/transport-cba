@@ -187,6 +187,8 @@ class RoadCBA(GenericRoadCBA):
                              "Use on of {1!s} instead".
                              format(self.gdp_source, list(df_gdp_meta.index)))
         gdp_col = df_gdp_meta.loc[self.gdp_source, 'column']
+        if self.verbose:
+            print("Using {0!s} for GDP prognosis".format(gdp_col))
 
         # read GDP information from the correct source
         self.gdp_growth = pd.read_excel(self.paramfile,

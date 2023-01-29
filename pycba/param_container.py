@@ -1,14 +1,15 @@
 import pandas as pd
-from numpy import arange, ones_like, where
+from numpy import arange
 import os
 
 
 available_countries = ["svk"]
-svk_params = ["gdp_growth", "cpi", "c_op", "toll_op", "res_val", \
-    "c_fuel", "conv_fac", \
-    "occ_p", "occ_f", "r_tp", "vtts", "voc", "fuel_coeffs", \
-    "r_acc", "c_acc", "r_ghg", "c_ghg", "r_em", "c_em", "noise"]
-
+svk_params = [
+    "gdp_growth", "cpi", "c_op", "toll_op", "res_val",
+    "c_fuel", "conv_fac",
+    "occ_p", "occ_f", "r_tp", "vtts", "voc", "fuel_coeffs",
+    "r_acc", "c_acc", "r_ghg", "c_ghg", "r_em", "c_em", "noise"
+]
 
 
 class ParamContainer(object):
@@ -26,15 +27,13 @@ class ParamContainer(object):
         self.df_raw = {}
         self.df_clean = {}
 
-
     def read_raw_params(self):
         """Load all parameter dataframes"""
         if self.verbose:
             print("Reading CBA parameters...")
 
         # macro data
-        self.gdp_growth = pd.read_csv(self.dirn + "gdp_growth.csv", \
-            index_col="year")
+        self.gdp_growth = pd.read_csv(self.dirn + "gdp_growth.csv", index_col="year")
         self.cpi = pd.read_csv(self.dirn + "cpi.csv", index_col="year")
 
         # financial data
@@ -44,12 +43,11 @@ class ParamContainer(object):
             pd.read_csv(self.dirn + "toll_operation_cost.csv", index_col=0)
         self.df_raw["res_val"] = \
             pd.read_csv(self.dirn + "residual_value.csv", index_col=0)
-        self.df_raw["c_fuel"] =\
+        self.df_raw["c_fuel"] = \
             pd.read_csv(self.dirn + "fuel_cost.csv", index_col=0)
 
         # physical data
-        self.fuel_rho = \
-            pd.read_csv(self.dirn + "fuel_density.csv", index_col="fuel")
+        self.fuel_rho = pd.read_csv(self.dirn + "fuel_density.csv", index_col="fuel")
 
         # economic data
         self.df_raw["conv_fac"] =\
@@ -83,7 +81,6 @@ class ParamContainer(object):
         self.df_raw["noise"] =\
             pd.read_csv(self.dirn + "noise.csv", index_col=0)
 
-
     def adjust_cpi(self, infl=0.02, yr_min=2000, yr_max=2100):
         """Fill in mising values and compute cumulative inflation 
         to be able to adjust the price level"""
@@ -96,8 +93,7 @@ class ParamContainer(object):
 
         # compute cumulative CPI
         self.cpi["cpi_index"] = ""
-        self.cpi["cpi_index"] = \
-            pd.to_numeric(self.cpi.cpi_index, errors="coerce")
+        self.cpi["cpi_index"] = pd.to_numeric(self.cpi.cpi_index, errors="coerce")
         self.cpi.loc[self.pl, "cpi_index"] = 1.0
         ix = self.cpi.index.get_loc(self.pl)
 
@@ -110,7 +106,6 @@ class ParamContainer(object):
         for i in range(ix+1, len(self.cpi)):
             self.cpi.iloc[i]["cpi_index"] = \
                 self.cpi.iloc[i-1].cpi_index * (self.cpi.iloc[i-1].cpi + 1.0)
-
 
     def clean_params(self):
         """Incorporate scale into values.
@@ -135,17 +130,15 @@ class ParamContainer(object):
                    self.df_clean[c].value * self.df_clean[c].scale
                 self.df_clean[c].drop(columns=["scale"], inplace=True)
 
-
     def adjust_price_level(self):
         """Unify the prices for one price level"""
         if self.verbose:
             print("Adjusting price level...")
-        for c in ["c_op", "toll_op", \
-            "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]:
+        for c in ["c_op", "toll_op", "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]:
             if self.verbose:
                 print("    Adjusting: %s" % c)
-            self.df_clean[c]["value"] = self.df_clean[c].value \
-                * self.df_clean[c].price_level\
+            self.df_clean[c]["value"] = \
+                self.df_clean[c].value * self.df_clean[c].price_level\
                 .map(lambda x: self.cpi.loc[x].cpi_index)
             self.df_clean[c].drop(columns=["price_level"], inplace=True)
             self.df_clean[c]["value"] = self.df_clean[c].value#.round(3)
@@ -162,14 +155,11 @@ class ParamContainer(object):
         self._wrangle_emissions()
         self._wrangle_noise()
 
-
     def _wrangle_opex(self):
         """Set up index"""
         c = "c_op"
         self.df_clean[c].reset_index(inplace=True)
-        self.df_clean[c].set_index(\
-            ["item", "operation_type", "category"], inplace=True)
-
+        self.df_clean[c].set_index(["item", "operation_type", "category"], inplace=True)
 
     def _wrangle_vtts(self):
         """Average the value of the travel time saved"""
@@ -226,7 +216,6 @@ class ParamContainer(object):
 
         self.df_clean["vtts"] = vtts.copy()
 
-
     def _wrangle_fuel(self):
         """Convert units from eur/l to eur/kg"""
         # fuel ratios for vehicle types
@@ -250,7 +239,6 @@ class ParamContainer(object):
             self.df_clean[c][itm] = \
                 self.df_clean[c][itm] * self.df_clean[c].value
         self.df_clean[c].drop(columns=["value"], inplace=True)
-
 
     def _wrangle_accidents(self):
         """Unify the two datasets storing values for accidents"""
@@ -277,7 +265,6 @@ class ParamContainer(object):
         self.df_clean["c_acc"].set_index(\
             ["category", "lanes", "layout", "environment"], inplace=True)
 
-
     def _wrangle_greenhouse(self):
         b = "r_ghg"
         self.df_clean[b]["value"] = \
@@ -285,7 +272,6 @@ class ParamContainer(object):
 
         gr = self.df_clean[b].groupby(["vehicle", "fuel"])["value"].sum()
         self.df_clean[b] = pd.DataFrame(gr).round(0)
-
 
     def _wrangle_emissions(self):
         b = "c_em"
@@ -300,7 +286,6 @@ class ParamContainer(object):
             inplace=True)
         self.df_clean[b] = self.df_clean[b].sort_index()
 
-
     def _wrangle_noise(self):
         b = "noise"
         self.df_clean[b] = self.df_clean[b]\
@@ -308,14 +293,9 @@ class ParamContainer(object):
         self.df_clean[b].drop(columns=["traffic_type"], inplace=True)
         self.df_clean[b]["value2"] = self.df_clean[b].value\
             * self.df_clean[b].ratio
-        gr = self.df_clean[b]\
-            .groupby(["vehicle", "environment", "gdp_growth_adjustment"])
+        gr = self.df_clean[b].groupby(["vehicle", "environment", "gdp_growth_adjustment"])
 
         self.df_clean[b] = gr["value2"].sum()
         self.df_clean[b] = self.df_clean[b].reset_index()
         self.df_clean[b].rename(columns={"value2": "value"}, inplace=True)
         self.df_clean[b].set_index(["vehicle", "environment"], inplace=True)
-
-
-
-

@@ -1541,6 +1541,8 @@ class RoadCBA(GenericRoadCBA):
         self._compute_travel_time_matrix()
 
         self._compute_vtts()
+        if self.include_freight_time:
+            self._compute_vfts()
         self._compute_voc()
         self._compute_fuel_consumption()
         self._compute_fuel_cost()

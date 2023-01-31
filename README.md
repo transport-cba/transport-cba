@@ -9,7 +9,7 @@ It offers a significantly wider options for analysis of alternatives
 than Excel.
 
 ## Dependencies
-numpy, pandas, numpy_financial
+numpy, pandas, numpy_financial, xlsxwriter
 
 ## Contributors
 [Peter Vanya](https://github.com/petervanya), Inovec Technology

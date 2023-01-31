@@ -1585,3 +1585,24 @@ class RoadCBA(GenericRoadCBA):
 
     def print_financial_indicators(self):
         raise NotImplementedError("To be added.")
+
+    def export_to_unformatted_excel(self, filename='cba_results.xlsx'):
+        """Creates an Excel file with sheets containing inputs
+        and computation results.
+        """
+
+        # create writer
+        writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+
+        # save inputs for documentation
+        self.C_fin.to_excel(writer, sheet_name='capex')
+        self.RP.to_excel(writer, sheet_name='road_parameters')
+        self.toll_parameters.to_excel(writer, sheet_name='toll_parameters')
+        self.params_clean['r_acc_c'].to_excel(writer,
+                                              sheet_name='custom_accident_rates')
+        self.I0.to_excel(writer, sheet_name='intensities_0')
+        self.I1.to_excel(writer, sheet_name='intensities_1')
+        self.V0.to_excel(writer, sheet_name='velocities_0')
+        self.V1.to_excel(writer, sheet_name='velocities_1')
+
+        writer.close()

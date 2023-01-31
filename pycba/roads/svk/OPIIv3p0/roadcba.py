@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import numpy_financial as npf
+import openpyxl as opx
+
 from pycba.roads import GenericRoadCBA
 
 DAYS_YEAR = 365.0
@@ -1608,3 +1610,160 @@ class RoadCBA(GenericRoadCBA):
         self.V1.to_excel(writer, sheet_name='velocities_1')
 
         writer.close()
+
+    def export_to_excel(self, filename='cba_results.xlsx'):
+        # load template excel file
+        wb = opx.load_workbook(self.paramdir + 'minimum_export_template.xlsx')
+
+        # save time-realted parameters for automatic column update
+        # within the template
+        sheet_name = 'Parametre'
+        ws = wb[sheet_name]
+
+        # price level
+        ws['C11'] = self.yr_pl
+        # investment start
+        ws['C13'] = self.yr_i
+        # investment end
+        ws['C14'] = self.yr_op - 1
+        # operation start
+        ws['C15'] = self.yr_op
+
+        # save economic analysis aggreagted results
+        sheet_name = '15 Ekonomická analýza'
+        ws = wb[sheet_name]
+
+        # careful: fixed 30 years
+        eco_tab = ws['D5':'AG15']
+
+        costs_benefits = list(self.df_eco.index.get_level_values('item'))
+
+        # aggregate certain costs and benefits
+        opex_total = self.df_eco.loc[('cost',
+                                        ['opex_maintenance', 'replacements',
+                                         'opex_toll']),
+                     :].sum(axis=0)
+        # aggregate voc
+        voc_total = self.df_eco.loc[('benefit',
+                                       ['voc_l', 'voc_t']),
+                    :].sum(axis=0)
+
+        for col in range(30):
+            yr = self.df_eco.columns[col]
+
+            # CAPEX - Investičné náklady
+            # put the negative due to convention in the Excel file
+            eco_tab[0][col].value = -self.df_eco.loc[('cost', 'capex'), yr]
+            # total OPEX (opex_maintenance, replacements, opex_toll) - Prevádzkové náklady
+            if ('opex_maintenance' in costs_benefits) \
+                    or ('replacements' in costs_benefits) \
+                    or ('opex_toll' in costs_benefits):
+                eco_tab[1][col].value = -opex_total[yr]
+            # vtts - Čas cestujúcich
+            if 'vtts' in costs_benefits:
+                eco_tab[2][col].value = self.df_eco.loc[
+                    ('benefit', 'vtts'), yr]
+            # vfts - Čas tovaru
+            if 'vfts' in costs_benefits:
+                eco_tab[3][col].value = self.df_eco.loc[
+                    ('benefit', 'vfts'), yr]
+            # fuel - Spotreba pohonných látok
+            if 'fuel' in costs_benefits:
+                eco_tab[4][col].value = self.df_eco.loc[
+                    ('benefit', 'fuel'), yr]
+            # total voc (voc_l, voc_t) - Ostatné prevádzkové náklady vozidiel
+            if ('voc_l' in costs_benefits) \
+                    or ('voc_t' in costs_benefits):
+                eco_tab[5][col].value = voc_total[yr]
+            # c_acc - Bezpečnosť
+            if 'c_acc' in costs_benefits:
+                eco_tab[6][col].value = self.df_eco.loc[
+                    ('benefit', 'c_acc'), yr]
+            # em - Znečisťujúce látky
+            if 'em' in costs_benefits:
+                eco_tab[7][col].value = self.df_eco.loc[
+                    ('benefit', 'em'), yr]
+            # ghg - Skleníkové plyny
+            if 'ghg' in costs_benefits:
+                eco_tab[8][col].value = self.df_eco.loc[
+                    ('benefit', 'ghg'), yr]
+            # noise - Hluk
+            if 'noise' in costs_benefits:
+                eco_tab[9][col].value = self.df_eco.loc[
+                    ('benefit', 'noise'), yr]
+            # res_val - Zostatková hodnota
+            if 'ghg' in costs_benefits:
+                eco_tab[10][col].value = self.df_eco.loc[
+                    ('benefit', 'res_val'), yr]
+
+        # save to disk
+        wb.save(filename)
+
+        # create writer
+        with pd.ExcelWriter(filename,
+                            engine='openpyxl',
+                            mode='a') as writer:
+            # save inputs for documentation
+            self.RP.to_excel(writer, sheet_name='road_parameters')
+            self.toll_parameters.to_excel(writer,
+                                            sheet_name='toll_parameters')
+            self.params_clean['r_acc_c'].to_excel(writer,
+                                                    sheet_name='custom_accident_rates')
+            self.I0.to_excel(writer, sheet_name='intensities_0')
+            self.I1.to_excel(writer, sheet_name='intensities_1')
+            self.V0.to_excel(writer, sheet_name='velocities_0')
+            self.V1.to_excel(writer, sheet_name='velocities_1')
+
+            self.C_fin.to_excel(writer, sheet_name='capex')
+
+            # operation costs
+            op_costs = np.union1d(list(self.O0_eco.keys()),
+                                  list(self.O1_eco.keys()))
+            for c in op_costs:
+                try:
+                    self.O0_eco[c].to_excel(
+                        writer,
+                        sheet_name=c + '_eco_0')
+                except:
+                    pass
+                try:
+                    self.O1_eco[c].to_excel(
+                        writer,
+                        sheet_name=c + '_eco_1')
+                except:
+                    pass
+
+            # benefits
+            benefits = np.union1d(list(self.B0.keys()),
+                                  list(self.B1.keys()))
+            for b in benefits:
+                try:
+                    self.B0[b].to_excel(
+                        writer,
+                        sheet_name=b + '_0')
+                except:
+                    pass
+                try:
+                    self.B1[b].to_excel(
+                        writer,
+                        sheet_name=b + '_1')
+                except:
+                    pass
+
+            # income
+            incomes = np.union1d(list(self.I0_fin.keys()),
+                                 list(self.I1_fin.keys()))
+
+            for i in incomes:
+                try:
+                    self.I0_fin[i].to_excel(
+                        writer,
+                        sheet_name=i + '_0')
+                except:
+                    pass
+                try:
+                    self.I1_fin[i].to_excel(
+                        writer,
+                        sheet_name=i + '_1')
+                except:
+                    pass

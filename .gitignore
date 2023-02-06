@@ -5,6 +5,10 @@ Testing/
 */.DS_Store
 **/.DS_Store
 tests/*xlsx
+cba_inputs.xlsx
+cba_results.xlsx
+use_cases/old
+use_cases/*ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

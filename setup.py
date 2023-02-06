@@ -20,6 +20,6 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3',
-    package_data={"": ["examples/*.csv", "parameters/*/*.csv"]},
+    package_data={"": ["examples/*.csv", "examples/cba_sample_bypass.xlsx", "parameters/*/*.csv"]},
     install_requires=["numpy>=1.16, <2", "pandas>=0.24, <1.3"],
 )

@@ -615,7 +615,8 @@ class RoadCBA(GenericRoadCBA):
         self._wrangle_parameters()
 
     def read_project_inputs(self, df_rp, df_capex,
-                            df_int_0, df_int_1, df_vel_0, df_vel_1):
+                            df_int_0, df_int_1, df_vel_0, df_vel_1,
+                            df_acc_rates, df_toll_parameters):
         """
             Input
             ------
@@ -636,6 +637,12 @@ class RoadCBA(GenericRoadCBA):
 
             df_vel_1: pandas DataFrame
                 Dataframe of vehicle velocities in variant 1.
+
+            df_acc_rates: pandas DataFrame
+                Dataframe of custom accident rates.
+
+            df_toll_parameters: pandas DataFrame
+                Dataframe of toll section types.
 
             Returns
             ------
@@ -658,10 +665,16 @@ class RoadCBA(GenericRoadCBA):
 
         self._wrangle_inputs()
 
+
+        self.params_raw['r_acc_c'] = df_acc_rates.copy()
+        self.acc_loaded = True
+
+        self.toll_parameters = df_toll_parameters.copy()
+
     def _assign_core_variables(self):
         """
         Assigns the variables describing the time frame of the economic
-        evaluation.
+        evaluation.core_v
         """
 
         self.yr_op = int(self.C_fin.columns[-1]) + 1
@@ -742,15 +755,15 @@ class RoadCBA(GenericRoadCBA):
         self.V0 = input_dict['velocities_0'].set_index('id_road_section')
         self.V1 = input_dict['velocities_1'].set_index('id_road_section')
 
+        # read accident rates and toll parameters
+        self.read_custom_accident_rates(input_dict['custom_accident_rates'])
+        self.read_toll_section_types(input_dict['toll_parameters'])
+
         # assign core variables
         self._wrangle_capex()
         self._assign_core_variables()
 
         self._wrangle_inputs()
-
-        # read accident rates and toll parameters
-        self.read_custom_accident_rates(input_dict['custom_accident_rates'])
-        self.read_toll_section_types(input_dict['toll_parameters'])
 
     def _wrangle_capex(self):
         """Collect capex."""

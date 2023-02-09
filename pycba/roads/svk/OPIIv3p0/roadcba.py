@@ -27,6 +27,27 @@ class RoadCBA(GenericRoadCBA):
                             'roundabout_extravilan',
                             'intersection_intravilan',
                             'intersection_extravilan', 'interchange']
+    ROAD_PARAMETER_COLUMNS = ['road_section_name',
+                              'section_type', 'variant', 'length', 'width',
+                              'area', 'surface',
+        'condition', 'lower_usage', 'environment', 'road_type', 'lanes',
+        'road_layout', 'accident_rate_name', 'toll_section', 'exit_intravilan',
+        'roundabout_intravilan', 'roundabout_extravilan',
+        'intersection_intravilan', 'intersection_extravilan', 'interchange',
+        'acceleration_note']
+    ROAD_PARAMETER_ALLOWED_VALUES = {
+        'section_type':['road', 'bridge', 'tunnel'],
+        'variant':[0, 1],
+        'surface':['tarmac', 'concrete'],
+        'condition':['new', 'good', 'bad'],
+        'lower_usage':[True, False],
+        'environment':['extravilan', 'rural', 'city', 'city_center']
+    }
+    ACCIDENT_COLUMNS = ['accident_rate_name', 'unit', 'scale', 'fatal',
+                        'severe_injury', 'light_injury', 'nb']
+    TOLL_PARAMETERS_COLUMNS = ['toll_section_id', 'toll_section_type_0',
+                               'toll_section_type_1']
+    VEHICLE_TYPES= ['car', 'lgv', 'mgv', 'hgv', 'bus']
 
     # extravilan toll section types - vehicles tolled if they cross
     # the entire toll section
@@ -659,17 +680,18 @@ class RoadCBA(GenericRoadCBA):
         self.V0 = df_vel_0.copy()
         self.V1 = df_vel_1.copy()
 
+        self.params_raw['r_acc_c'] = df_acc_rates.copy()
+        self.acc_loaded = True
+
+        self.toll_parameters = df_toll_parameters.copy()
+
+        self._verify_input_integrity()
+
         # assign core variables
         self._wrangle_capex()
         self._assign_core_variables()
 
         self._wrangle_inputs()
-
-
-        self.params_raw['r_acc_c'] = df_acc_rates.copy()
-        self.acc_loaded = True
-
-        self.toll_parameters = df_toll_parameters.copy()
 
     def _assign_core_variables(self):
         """
@@ -710,8 +732,12 @@ class RoadCBA(GenericRoadCBA):
             Name of the dataframe to be used in a warning.
         """
 
+        # 'index' as a possible value for robustness
+        to_drop = ['id_model_section']
+        if 'index' in df.reset_index().columns:
+            to_drop = to_drop + ['index']
         df_out = df.reset_index()\
-                    .drop(columns='id_model_section')\
+                    .drop(columns=to_drop)\
                     .set_index(['id_road_section', 'vehicle'])
         df_out.columns = df_out.columns.astype(int)
 
@@ -759,16 +785,207 @@ class RoadCBA(GenericRoadCBA):
         self.read_custom_accident_rates(input_dict['custom_accident_rates'])
         self.read_toll_section_types(input_dict['toll_parameters'])
 
+        self._verify_input_integrity()
+
         # assign core variables
         self._wrangle_capex()
         self._assign_core_variables()
-
         self._wrangle_inputs()
+
+    def _verify_input_integrity(self):
+        self._verify_custom_accident_rates()
+        self._verify_toll_parameters()
+        self._verify_road_parameters()
+        self._verify_intensity_velocity(self.I0, 0, 'I0')
+        self._verify_intensity_velocity(self.I1, 1, 'I1')
+        self._verify_intensity_velocity(self.V0, 0, 'V0')
+        self._verify_intensity_velocity(self.V1, 1, 'V1')
+
+    def _verify_road_parameters(self):
+        # check index name
+        RP_index_name = self.RP.index.name
+        if RP_index_name != 'id_road_section':
+            raise ValueError('Road paramaters dataframe index name is '
+                             '"{RP_index}" instead of "id_road_section"'\
+                             .format(RP_index=RP_index_name)
+                             )
+        # check columns
+        missing_columns = np.setdiff1d(self.ROAD_PARAMETER_COLUMNS,
+                                       self.RP.columns)
+        extra_columns = np.setdiff1d(self.RP.columns,
+                                     self.ROAD_PARAMETER_COLUMNS)
+        if missing_columns.size > 0:
+            raise ValueError("Necessary columns of road parameters "
+                             "are missing.\n"
+                             f"missing: {missing_columns}\n"
+                             f"extra: {extra_columns}")
+
+        # check contents of columns - categorical columns
+        for cat_col in self.ROAD_PARAMETER_ALLOWED_VALUES.keys():
+            allowed_values = self.ROAD_PARAMETER_ALLOWED_VALUES[cat_col]
+            input_values = self.RP[cat_col].unique()
+            unallowed_values = np.setdiff1d(input_values, allowed_values)
+            if unallowed_values.size > 0:
+                raise ValueError(f"Values {unallowed_values} not permitted "
+                                 f"in column '{cat_col}' of road parameters"
+                                 f". Use only {allowed_values}.")
+
+        # check length and width: non-empty, non-negative
+        def is_nonnegative_number(x):
+            if not np.isreal(x):
+                return False
+            else:
+                return x > 0
+
+        for col in ['length', 'width']:
+            value_is_allowed = self.RP[col].apply(is_nonnegative_number)
+            if not np.all(value_is_allowed):
+                df_error = self.RP.loc[~value_is_allowed, ['variant', col]]
+                raise ValueError(f"Values in '{col}' of road parameters"
+                                 f" must be numeric, "
+                                 f"non-negative and not empty.\n\n"
+                                 f"{df_error}")
+
+        def is_nonnegative_number_or_nan(x):
+            if not np.isreal(x):
+                return False
+            else:
+                return (x > 0) or np.isnan(x)
+
+        # non-negative number or empty
+        for col in ['area'] + self.ACCELERATION_COLUMNS:
+            value_is_allowed = self.RP[col].apply(is_nonnegative_number_or_nan)
+            if not np.all(value_is_allowed):
+                df_error = self.RP.loc[~value_is_allowed, ['variant', col]]
+                raise ValueError(f"Values in '{col}' must be numeric "
+                                 f"non-negative or empty.\n\n"
+                                 f"{df_error}")
+
+        # check allowed accident values
+        # Warning: does not check for correctness of layout x road_type
+        acc_allowed = ['default'] \
+                      + list(self.params_raw['r_acc_c']['accident_rate_name'].unique())
+        mask_allowed = self.RP['accident_rate_name'].isin(acc_allowed)
+        if not np.all(mask_allowed):
+            unallowed_values = self.RP.loc[~mask_allowed, 'accident_rate_name']\
+                                .unique()
+            df_unallowed = self.RP.loc[~mask_allowed,
+                                       ['variant',  'accident_rate_name']]
+            raise ValueError(
+                "Entries in column accident_rate_name of road parameters "
+                "must be either 'default' or defined in custom accident rates."
+                f"\nValues {unallowed_values} were not defined."
+                f"\n{df_unallowed}"
+            )
+
+        # check allowed toll section values
+        # allowed: empty and those defined in toll_parameters
+        toll_allowed = self.toll_parameters['toll_section_id']
+        mask_allowed = self.RP['toll_section'].isin(toll_allowed) \
+                       | self.RP['toll_section'].isna()
+        if not np.all(mask_allowed):
+            unallowed_values = self.RP \
+                .loc[~mask_allowed, 'toll_section'].unique()
+            df_unallowed = self.RP.loc[~mask_allowed,
+                                       ['variant', 'toll_section']]
+            raise ValueError(
+                "Entries in column toll_section of road parameters "
+                "must be either empty or defined in toll_parameters."
+                f"\nValues {unallowed_values} were not defined."
+                f"\n{df_unallowed}"
+            )
+
+        # detect duplicates in (id_road_section, variant)
+        RP_no_index = self.RP.reset_index()
+        mask_duplicates = RP_no_index[['id_road_section', 'variant']].duplicated()
+        df_duplicates = mask_duplicates[mask_duplicates]
+        if df_duplicates.index.size > 0:
+            raise ValueError(
+                "Pairs of values (id_road_section, variant)"
+                f"must not be duplicated in road parameters."
+                f"\nDuplicates:\n"
+                f"{df_duplicates[['id_road_section', 'variant']]}")
+
+    def _verify_intensity_velocity(self, df_ver, variant, s_description):
+        df = df_ver.reset_index()
+
+        # verify presence of index columns
+        for col in ['id_road_section', 'vehicle']:
+            if col not in df.columns:
+                raise ValueError(f"'{col}' must be among the columns "
+                                 f"of {s_description}.")
+
+        RP_index = self.RP[self.RP['variant']==variant].index
+        if set(df['id_road_section']) != set(RP_index):
+            raise ValueError(f"Values in 'id_road_section' of {s_description} "
+                             f"must be identical to the index "
+                             f"of road parameters.")
+
+        extra_vehicles = np.setdiff1d(df['vehicle'], self.VEHICLE_TYPES)
+        if extra_vehicles.size > 0:
+            raise ValueError(f"Values in 'vehicle' of {s_description}"
+                             f"must be from {self.VEHICLE_TYPES}.\n"
+                             f"{extra_vehicles} are not allowed.")
+
+        # detect duplicates in (id_road_section, vehicle)
+        mask_duplicates = df[['id_road_section', 'vehicle']].duplicated()
+        df_duplicates = df[mask_duplicates]
+        if df_duplicates.index.size > 0:
+            raise ValueError("Pairs of values (id_road_section, vehicle)"
+                             f"must not be duplicated in {s_description}."
+                             f"\nDuplicates:\n"
+                             f"{df_duplicates[['id_road_section', 'vehicle']]}")
+
+    def _verify_custom_accident_rates(self):
+        # verify accident columns
+        if set(self.params_raw['r_acc_c'].columns) != set(self.ACCIDENT_COLUMNS):
+            raise ValueError(
+                "The columns of custom accident rates "
+                 f"dataframe must be {self.ACCIDENT_COLUMNS}.\n"
+                 "Current columns are:\n"
+                 f"{self.params_raw['r_acc_c'].columns}"
+            )
+
+        # soft warning for empty dataframe
+        if self.verbose:
+            if self.params_raw['r_acc_c'].index.size == 0:
+                print("Warning:\n"
+                      "Custom accident rates not provided. "
+                      "Running wrapper methods such as "
+                      "perform_economic_analysis may result in an error.")
+        # TODO: verify numerical values
+
+    def _verify_toll_parameters(self):
+        # verify columns
+        TP_columns = self.toll_parameters.columns
+        missing_columns = np.setdiff1d(self.TOLL_PARAMETERS_COLUMNS,
+                                       TP_columns)
+        extra_columns = np.setdiff1d(TP_columns,
+                                     self.TOLL_PARAMETERS_COLUMNS)
+
+        if set(TP_columns) != set(self.TOLL_PARAMETERS_COLUMNS):
+            raise ValueError("Columns of toll parameters must be "
+                             f"{self.TOLL_PARAMETERS_COLUMNS}. \n"
+                             f"missing: {missing_columns}\n"
+                             f"extra: {extra_columns}")
+
+        # verify toll section types - nan or allowed category from Guidebook
+        allowed_values = self.TSTYPES_E + self.TSTYPES_I
+        for col in ['toll_section_type_0', 'toll_section_type_1']:
+            # check if empty or one of allowed values
+            mask_allowed = self.toll_parameters[col].isin(allowed_values)\
+                           | self.toll_parameters[col].isna()
+            if not np.all(mask_allowed):
+                unallowed_values = self.toll_parameters\
+                                        .loc[~mask_allowed, col].unique()
+                raise ValueError(
+                    f"Values {unallowed_values} not permitted "
+                    f"in column '{col}'. Use only "
+                    f"{allowed_values} or leave empty."
+                )
 
     def _wrangle_capex(self):
         """Collect capex."""
-
-        # TODO check integrity
 
         # replace empty cells with zeros
         self.C_fin.fillna(0, inplace=True)
@@ -1532,7 +1749,6 @@ class RoadCBA(GenericRoadCBA):
 
     def compute_costs_benefits(self):
         """Compute financial and economic costs and benefits"""
-        # TODO: integrity verification
 
         # unit costs
         if self.verbose:

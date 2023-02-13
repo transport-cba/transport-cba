@@ -49,9 +49,9 @@ cba_LL.read_project_inputs(df_rp=dict_LL['RP'],
                            df_int_0=dict_LL['I0'], 
                            df_int_1=dict_LL['I1'],
                            df_vel_0=dict_LL['V0'], 
-                           df_vel_1=dict_LL['V1'])
-cba_LL.read_custom_accident_rates(dict_LL['acc'])
-cba_LL.read_toll_section_types(dict_LL['TP'])
+                           df_vel_1=dict_LL['V1'],
+                           df_acc_rates=dict_LL['acc'], 
+                           df_toll_parameters=dict_LL['TP'])
 
 cba_LL.read_parameters()
 

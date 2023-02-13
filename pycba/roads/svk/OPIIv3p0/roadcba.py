@@ -23,6 +23,23 @@ class RoadCBA(GenericRoadCBA):
                              'toll_parameters', 'custom_accident_rates',
                              'intensities_0', 'intensities_1',
                              'velocities_0', 'velocities_1']
+    CAPEX_ITEMS = ['planning and design',
+                    'land',
+                    'site preparation',
+                    'bridges',
+                    'tunnels',
+                    'buildings',
+                    'roads',
+                    'walls and stabilisation',
+                    'noise barriers and other environment protection measures',
+                    'information system – constructions',
+                    'information system – technology',
+                    'other',
+                    'induced investment',
+                    'supervision',
+                    'other services',
+                    'contingencies',
+                    'cost adjustment']
     ACCELERATION_COLUMNS = ['exit_intravilan', 'roundabout_intravilan',
                             'roundabout_extravilan',
                             'intersection_intravilan',
@@ -793,6 +810,7 @@ class RoadCBA(GenericRoadCBA):
         self._wrangle_inputs()
 
     def _verify_input_integrity(self):
+        self._verify_capex()
         self._verify_custom_accident_rates()
         self._verify_toll_parameters()
         self._verify_road_parameters()
@@ -801,7 +819,30 @@ class RoadCBA(GenericRoadCBA):
         self._verify_intensity_velocity(self.V0, 0, 'V0')
         self._verify_intensity_velocity(self.V1, 1, 'V1')
 
+    def _verify_capex(self):
+        if self.verbose:
+            print('Verifying C_fin...')
+        # check index name
+        if self.C_fin.index.name != 'item':
+            raise ValueError('CAPEX dataframe index name is '
+                             f'"{self.C_fin.index.name}" instead of '
+                             '"item"'
+                             )
+        # check item names
+        missing_items = np.setdiff1d(self.CAPEX_ITEMS,
+                                     self.C_fin.index)
+        extra_items = np.setdiff1d(self.C_fin.index,
+                                     self.CAPEX_ITEMS)
+        if extra_items.size > 0:
+            raise ValueError("Unknown items are provided in CAPEX dataframe:\n"
+                             f"extra: {extra_items}")
+        if missing_items.size > 0:
+            print("Warning: some items of CAPEX were not provided:\n"
+                  f"{missing_items}")
+
     def _verify_road_parameters(self):
+        if self.verbose:
+            print('Verifying road parameters...')
         # check index name
         RP_index_name = self.RP.index.name
         if RP_index_name != 'id_road_section':
@@ -907,6 +948,8 @@ class RoadCBA(GenericRoadCBA):
                 f"{df_duplicates[['id_road_section', 'variant']]}")
 
     def _verify_intensity_velocity(self, df_ver, variant, s_description):
+        if self.verbose:
+            print(f'Verifying {s_description}...')
         df = df_ver.reset_index()
 
         # verify presence of index columns
@@ -937,6 +980,8 @@ class RoadCBA(GenericRoadCBA):
                              f"{df_duplicates[['id_road_section', 'vehicle']]}")
 
     def _verify_custom_accident_rates(self):
+        if self.verbose:
+            print('Verifying custom accident rates...')
         # verify accident columns
         if set(self.params_raw['r_acc_c'].columns) != set(self.ACCIDENT_COLUMNS):
             raise ValueError(
@@ -956,6 +1001,8 @@ class RoadCBA(GenericRoadCBA):
         # TODO: verify numerical values
 
     def _verify_toll_parameters(self):
+        if self.verbose:
+            print('Verifying toll parameters...')
         # verify columns
         TP_columns = self.toll_parameters.columns
         missing_columns = np.setdiff1d(self.TOLL_PARAMETERS_COLUMNS,

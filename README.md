@@ -9,7 +9,7 @@ It offers a significantly wider options for analysis of alternatives
 than Excel.
 
 ## Dependencies
-numpy, pandas, numpy_financial
+numpy, pandas, numpy_financial, xlsxwriter
 
 ## Contributors
 [Peter Vanya](https://github.com/petervanya), Inovec Technology
@@ -25,6 +25,8 @@ Required project inputs:
 
 Options to load project inputs:
 * separately as Pandas dataframes
+* Excel file with sheet names: `capex, road_parameters, toll_parameters, 
+custom_accident_rates, intensities_0, intensities_1, velocities_0, velocities_1`
 
 ## Outputs
 * Dataframe of costs and benefits
@@ -47,9 +49,9 @@ cba_LL.read_project_inputs(df_rp=dict_LL['RP'],
                            df_int_0=dict_LL['I0'], 
                            df_int_1=dict_LL['I1'],
                            df_vel_0=dict_LL['V0'], 
-                           df_vel_1=dict_LL['V1'])
-cba_LL.read_custom_accident_rates(dict_LL['acc'])
-cba_LL.read_toll_section_types(dict_LL['TP'])
+                           df_vel_1=dict_LL['V1'],
+                           df_acc_rates=dict_LL['acc'], 
+                           df_toll_parameters=dict_LL['TP'])
 
 cba_LL.read_parameters()
 

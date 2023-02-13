@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import numpy_financial as npf
+import openpyxl as opx
+
 from pycba.roads import GenericRoadCBA
 
 DAYS_YEAR = 365.0
@@ -16,6 +18,73 @@ class RoadCBA(GenericRoadCBA):
 
     from pycba.roads.svk.OPIIv3p0 import RoadCBA
     """
+    # OPIIv3p0 specific part
+    INPUT_REQUIRED_SHEETS = ['capex', 'road_parameters',
+                             'toll_parameters', 'custom_accident_rates',
+                             'intensities_0', 'intensities_1',
+                             'velocities_0', 'velocities_1']
+    CAPEX_ITEMS = ['planning and design',
+                    'land',
+                    'site preparation',
+                    'bridges',
+                    'tunnels',
+                    'buildings',
+                    'roads',
+                    'walls and stabilisation',
+                    'noise barriers and other environment protection measures',
+                    'information system – constructions',
+                    'information system – technology',
+                    'other',
+                    'induced investment',
+                    'supervision',
+                    'other services',
+                    'contingencies',
+                    'cost adjustment']
+    ACCELERATION_COLUMNS = ['exit_intravilan', 'roundabout_intravilan',
+                            'roundabout_extravilan',
+                            'intersection_intravilan',
+                            'intersection_extravilan', 'interchange']
+    ROAD_PARAMETER_COLUMNS = ['road_section_name',
+                              'section_type', 'variant', 'length', 'width',
+                              'area', 'surface',
+        'condition', 'lower_usage', 'environment', 'road_type', 'lanes',
+        'road_layout', 'accident_rate_name', 'toll_section', 'exit_intravilan',
+        'roundabout_intravilan', 'roundabout_extravilan',
+        'intersection_intravilan', 'intersection_extravilan', 'interchange',
+        'acceleration_note']
+    ROAD_PARAMETER_ALLOWED_VALUES = {
+        'section_type':['road', 'bridge', 'tunnel'],
+        'variant':[0, 1],
+        'surface':['tarmac', 'concrete'],
+        'condition':['new', 'good', 'bad'],
+        'lower_usage':[True, False],
+        'environment':['extravilan', 'rural', 'city', 'city_center']
+    }
+    ACCIDENT_COLUMNS = ['accident_rate_name', 'unit', 'scale', 'fatal',
+                        'severe_injury', 'light_injury', 'nb']
+    TOLL_PARAMETERS_COLUMNS = ['toll_section_id', 'toll_section_type_0',
+                               'toll_section_type_1']
+    VEHICLE_TYPES= ['car', 'lgv', 'mgv', 'hgv', 'bus']
+
+    # extravilan toll section types - vehicles tolled if they cross
+    # the entire toll section
+    TSTYPES_E = ['nonparallel', 'parallell', 'motorway']
+    # intravilan toll section types - vehicles tolled if they cross
+    # a part of toll section
+    TSTYPES_I = ['other/intravilan']
+    TOLLED_VEHICLES = ['mgv', 'hgv', 'bus']
+
+    # OPIIv3p0 parameters behaviour
+    PARAMS_FULL_SET = ['res_val', 'conv_fac', 'c_op', 'c_toll',
+                       'i_toll', 'r_tp', 'occ_p', 'vtts',
+                       'voc_t', 'voc_l', 'vfts', 'r_fuel',
+                       'fuel_coeffs', 'fuel_acc', 'fuel_rho',
+                       'c_fuel', 'r_ghg', 'c_ghg', 'r_em',
+                       'c_em', 'c_noise', 'r_acc_d', 'r_acc_c',
+                       'c_acc']
+    PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t', 'vfts',
+                                 'c_ghg',
+                                 'c_em', 'c_noise', 'c_acc']
 
     def __init__(self,
                  init_year,
@@ -80,23 +149,6 @@ class RoadCBA(GenericRoadCBA):
                          "svk_road_cba_parameters_OPIIv3p0_2022.xlsx"
         self.params_raw = {}
         self.params_clean = {}
-
-        # OPIIv3p0 specific part
-        # OPIIv3p0 parameters behaviour
-        self.ACCELERATION_COLUMNS = ['exit_intravilan','roundabout_intravilan',
-                    'roundabout_extravilan', 'intersection_intravilan',
-                    'intersection_extravilan', 'interchange']
-        self.PRICE_LEVEL_ADJUSTED = ["c_op", "vtts", 'voc_l', 'voc_t', 'vfts',
-                                     'c_ghg',
-                                     'c_em', 'c_noise', 'c_acc']
-
-        # extravilan toll section types - vehicles tolled if they cross
-        # the entire toll section
-        self.TSTYPES_E = ['nonparallel', 'parallell', 'motorway']
-        # intravilan toll section types - vehicles tolled if they cross
-        # a part of toll section
-        self.TSTYPES_I = ['other/intravilan']
-        self.TOLLED_VEHICLES = ['mgv', 'hgv', 'bus']
 
         # self.PRICE_LEVEL_ADJUSTED = ["c_op", "toll_op",
         #           "vtts", "voc", "c_fuel", "c_acc", "c_ghg", "c_em", "noise"]
@@ -175,6 +227,8 @@ class RoadCBA(GenericRoadCBA):
                              "Use on of {1!s} instead".
                              format(self.gdp_source, list(df_gdp_meta.index)))
         gdp_col = df_gdp_meta.loc[self.gdp_source, 'column']
+        if self.verbose:
+            print("Using {0!s} for GDP prognosis".format(gdp_col))
 
         # read GDP information from the correct source
         self.gdp_growth = pd.read_excel(self.paramfile,
@@ -261,6 +315,19 @@ class RoadCBA(GenericRoadCBA):
         Incorporate scale into values.
         Remove unimportant columns. Populate the params_clean dictionary
         """
+
+        # print warning if any of the full set of parameters are not present
+        missing_params = np.setdiff1d(self.PARAMS_FULL_SET,
+                                      list(self.params_raw.keys()))
+        if missing_params.size > 0:
+            print("\n",
+                  "Warning:\n",
+                  "Following parameters were not provided at the "
+                  "moment of parameter cleaning: \n",
+                  missing_params,
+                  "\n"
+                  )
+
         if self.verbose:
             print("Cleaning parameters...")
 
@@ -288,11 +355,6 @@ class RoadCBA(GenericRoadCBA):
                                                 self.params_clean[itm].value \
                                                 * self.params_clean[itm].scale
                 self.params_clean[itm].drop(columns=["scale"], inplace=True)
-
-        self.params_clean['c_op']['lower_usage'] =\
-            self.params_clean['c_op']['lower_usage'].astype(bool)
-        self.params_clean['c_op'].set_index(['section_type', 'surface',
-                                             'condition', 'lower_usage'])
 
     def _wrangle_cpi(self, infl=0.02, yr_min=2000, yr_max=2100):
         """
@@ -345,29 +407,10 @@ class RoadCBA(GenericRoadCBA):
 
     def _wrangle_parameters(self):
         """Wrangle parameters into form suitable for computation."""
-        # TODO replace with calls to functions
-
-        # conversion factors
-        capex_conv_fac = pd.merge(
-            self.params_clean['res_val'][['default_conversion_factor']],
-            self.params_clean['conv_fac'],
-            how='left',
-            left_on='default_conversion_factor',
-            right_index=True)[['value']]
-        self.params_clean['capex_conv_fac'] = capex_conv_fac
-
-        # residual value
-        self.params_clean['res_val']['included'] = \
-            self.params_clean['res_val']['included'].astype(bool)
-        self.params_clean['res_val']['lifetime'] = \
-            self.params_clean['res_val']['lifetime'].replace({'inf':np.inf})
-
-        # opex
-        self.params_clean['c_op'] = self.params_clean['c_op'].set_index(
-            ["section_type", "surface", "condition", "lower_usage"]
-        )
+        self._wrangle_conv_fac()
+        self._wrangle_res_val()
+        self._wrangle_opex()
         self._wrangle_toll()
-
         self._wrangle_vtts()
         self._wrangle_fuel()
         self._wrangle_voc()
@@ -376,6 +419,30 @@ class RoadCBA(GenericRoadCBA):
         self._wrangle_emissions()
         self._wrangle_noise()
         self._wrangle_accidents()
+
+    def _wrangle_conv_fac(self):
+        capex_conv_fac = pd.merge(
+            self.params_clean['res_val'][['default_conversion_factor']],
+            self.params_clean['conv_fac'],
+            how='left',
+            left_on='default_conversion_factor',
+            right_index=True)[['value']]
+        self.params_clean['capex_conv_fac'] = capex_conv_fac
+
+    def _wrangle_res_val(self):
+        # residual value
+        self.params_clean['res_val']['included'] = \
+            self.params_clean['res_val']['included'].astype(bool)
+        self.params_clean['res_val']['lifetime'] = \
+            self.params_clean['res_val']['lifetime'].replace({'inf': np.inf})
+
+    def _wrangle_opex(self):
+        self.params_clean['c_op']['lower_usage'] = \
+            self.params_clean['c_op']['lower_usage'].astype(bool)
+        self.params_clean['c_op'].set_index(['section_type', 'surface',
+                                             'condition', 'lower_usage'],
+                                            inplace=True)
+
     def _wrangle_vtts(self):
         """
         Average the value of travel time savings over everything other
@@ -422,7 +489,7 @@ class RoadCBA(GenericRoadCBA):
         self.params_clean['voc_t'] = voc_t.copy()
 
     def _wrangle_vfts(self):
-        # wrangle so that the ouput is more general and in pricniple allows
+        # wrangle so that the output is more general and in principle allows
         # to consider the average load of different vehicle categories
         vfts = self.params_clean['vfts'].set_index('substance')
         vfts = pd.concat([vfts, vfts])
@@ -586,7 +653,8 @@ class RoadCBA(GenericRoadCBA):
         self._wrangle_parameters()
 
     def read_project_inputs(self, df_rp, df_capex,
-                            df_int_0, df_int_1, df_vel_0, df_vel_1):
+                            df_int_0, df_int_1, df_vel_0, df_vel_1,
+                            df_acc_rates, df_toll_parameters):
         """
             Input
             ------
@@ -608,6 +676,12 @@ class RoadCBA(GenericRoadCBA):
             df_vel_1: pandas DataFrame
                 Dataframe of vehicle velocities in variant 1.
 
+            df_acc_rates: pandas DataFrame
+                Dataframe of custom accident rates.
+
+            df_toll_parameters: pandas DataFrame
+                Dataframe of toll section types.
+
             Returns
             ------
 
@@ -623,11 +697,25 @@ class RoadCBA(GenericRoadCBA):
         self.V0 = df_vel_0.copy()
         self.V1 = df_vel_1.copy()
 
+        self.params_raw['r_acc_c'] = df_acc_rates.copy()
+        self.acc_loaded = True
+
+        self.toll_parameters = df_toll_parameters.copy()
+
+        self._verify_input_integrity()
+
         # assign core variables
-        self._wrangle_inputs()
+        self._wrangle_capex()
         self._assign_core_variables()
 
+        self._wrangle_inputs()
+
     def _assign_core_variables(self):
+        """
+        Assigns the variables describing the time frame of the economic
+        evaluation.core_v
+        """
+
         self.yr_op = int(self.C_fin.columns[-1]) + 1
         self.N_yr_bld = len(self.C_fin.columns)
         self.N_yr_op = self.N_yr - self.N_yr_bld
@@ -646,7 +734,7 @@ class RoadCBA(GenericRoadCBA):
         self.V0 = self._wrangle_intensity_velocity(self.V0, 'V0')
         self.V1 = self._wrangle_intensity_velocity(self.V1, 'V1')
 
-        self._wrangle_capex()
+        # self._wrangle_capex()
 
         # fill 0 to acceleration coefficients
         self.RP[self.ACCELERATION_COLUMNS] = \
@@ -661,11 +749,19 @@ class RoadCBA(GenericRoadCBA):
             Name of the dataframe to be used in a warning.
         """
 
+        # 'index' as a possible value for robustness
+        to_drop = ['id_model_section']
+        if 'index' in df.reset_index().columns:
+            to_drop = to_drop + ['index']
         df_out = df.reset_index()\
-                    .drop(columns='id_model_section')\
+                    .drop(columns=to_drop)\
                     .set_index(['id_road_section', 'vehicle'])
         df_out.columns = df_out.columns.astype(int)
 
+        # erase values during construction period
+        df_out.loc[:, self.C_fin.columns] = np.nan
+
+        # fill values until the end of the evaluation period
         if df_out.columns[-1] < self.yr_f:
             if self.verbose:
                 print("Warning: "
@@ -676,10 +772,267 @@ class RoadCBA(GenericRoadCBA):
 
         return df_out
 
+    def read_project_inputs_excel(self, file_path):
+
+        if self.verbose:
+            print("Reading project inputs from Excel file...")
+
+        # read all sheets from the Excel file
+        input_dict = pd.read_excel(file_path, sheet_name=None)
+
+        # check for missing sheets
+        missing_sheets = np.setdiff1d(self.INPUT_REQUIRED_SHEETS,
+                                      list(input_dict.keys()))
+
+        if missing_sheets.size > 0:
+            raise ValueError('Input file is missing sheets: {missing}'.format(
+                missing=repr(list(missing_sheets))
+            ))
+
+        self.RP = input_dict['road_parameters'].set_index('id_road_section')
+        self.RP['lower_usage'] = self.RP['lower_usage'].astype(bool)
+        self.C_fin = input_dict['capex'].set_index('item')
+
+        self.I0 = input_dict['intensities_0'].set_index('id_road_section')
+        self.I1 = input_dict['intensities_1'].set_index('id_road_section')
+        self.V0 = input_dict['velocities_0'].set_index('id_road_section')
+        self.V1 = input_dict['velocities_1'].set_index('id_road_section')
+
+        # read accident rates and toll parameters
+        self.read_custom_accident_rates(input_dict['custom_accident_rates'])
+        self.read_toll_section_types(input_dict['toll_parameters'])
+
+        self._verify_input_integrity()
+
+        # assign core variables
+        self._wrangle_capex()
+        self._assign_core_variables()
+        self._wrangle_inputs()
+
+    def _verify_input_integrity(self):
+        self._verify_capex()
+        self._verify_custom_accident_rates()
+        self._verify_toll_parameters()
+        self._verify_road_parameters()
+        self._verify_intensity_velocity(self.I0, 0, 'I0')
+        self._verify_intensity_velocity(self.I1, 1, 'I1')
+        self._verify_intensity_velocity(self.V0, 0, 'V0')
+        self._verify_intensity_velocity(self.V1, 1, 'V1')
+
+    def _verify_capex(self):
+        if self.verbose:
+            print('Verifying C_fin...')
+        # check index name
+        if self.C_fin.index.name != 'item':
+            raise ValueError('CAPEX dataframe index name is '
+                             f'"{self.C_fin.index.name}" instead of '
+                             '"item"'
+                             )
+        # check item names
+        missing_items = np.setdiff1d(self.CAPEX_ITEMS,
+                                     self.C_fin.index)
+        extra_items = np.setdiff1d(self.C_fin.index,
+                                     self.CAPEX_ITEMS)
+        if extra_items.size > 0:
+            raise ValueError("Unknown items are provided in CAPEX dataframe:\n"
+                             f"extra: {extra_items}")
+        if missing_items.size > 0:
+            print("Warning: some items of CAPEX were not provided:\n"
+                  f"{missing_items}")
+
+    def _verify_road_parameters(self):
+        if self.verbose:
+            print('Verifying road parameters...')
+        # check index name
+        RP_index_name = self.RP.index.name
+        if RP_index_name != 'id_road_section':
+            raise ValueError('Road paramaters dataframe index name is '
+                             '"{RP_index}" instead of "id_road_section"'\
+                             .format(RP_index=RP_index_name)
+                             )
+        # check columns
+        missing_columns = np.setdiff1d(self.ROAD_PARAMETER_COLUMNS,
+                                       self.RP.columns)
+        extra_columns = np.setdiff1d(self.RP.columns,
+                                     self.ROAD_PARAMETER_COLUMNS)
+        if missing_columns.size > 0:
+            raise ValueError("Necessary columns of road parameters "
+                             "are missing.\n"
+                             f"missing: {missing_columns}\n"
+                             f"extra: {extra_columns}")
+
+        # check contents of columns - categorical columns
+        for cat_col in self.ROAD_PARAMETER_ALLOWED_VALUES.keys():
+            allowed_values = self.ROAD_PARAMETER_ALLOWED_VALUES[cat_col]
+            input_values = self.RP[cat_col].unique()
+            unallowed_values = np.setdiff1d(input_values, allowed_values)
+            if unallowed_values.size > 0:
+                raise ValueError(f"Values {unallowed_values} not permitted "
+                                 f"in column '{cat_col}' of road parameters"
+                                 f". Use only {allowed_values}.")
+
+        # check length and width: non-empty, non-negative
+        def is_nonnegative_number(x):
+            if not np.isreal(x):
+                return False
+            else:
+                return x > 0
+
+        for col in ['length', 'width']:
+            value_is_allowed = self.RP[col].apply(is_nonnegative_number)
+            if not np.all(value_is_allowed):
+                df_error = self.RP.loc[~value_is_allowed, ['variant', col]]
+                raise ValueError(f"Values in '{col}' of road parameters"
+                                 f" must be numeric, "
+                                 f"non-negative and not empty.\n\n"
+                                 f"{df_error}")
+
+        def is_nonnegative_number_or_nan(x):
+            if not np.isreal(x):
+                return False
+            else:
+                return (x > 0) or np.isnan(x)
+
+        # non-negative number or empty
+        for col in ['area'] + self.ACCELERATION_COLUMNS:
+            value_is_allowed = self.RP[col].apply(is_nonnegative_number_or_nan)
+            if not np.all(value_is_allowed):
+                df_error = self.RP.loc[~value_is_allowed, ['variant', col]]
+                raise ValueError(f"Values in '{col}' must be numeric "
+                                 f"non-negative or empty.\n\n"
+                                 f"{df_error}")
+
+        # check allowed accident values
+        # Warning: does not check for correctness of layout x road_type
+        acc_allowed = ['default'] \
+                      + list(self.params_raw['r_acc_c']['accident_rate_name'].unique())
+        mask_allowed = self.RP['accident_rate_name'].isin(acc_allowed)
+        if not np.all(mask_allowed):
+            unallowed_values = self.RP.loc[~mask_allowed, 'accident_rate_name']\
+                                .unique()
+            df_unallowed = self.RP.loc[~mask_allowed,
+                                       ['variant',  'accident_rate_name']]
+            raise ValueError(
+                "Entries in column accident_rate_name of road parameters "
+                "must be either 'default' or defined in custom accident rates."
+                f"\nValues {unallowed_values} were not defined."
+                f"\n{df_unallowed}"
+            )
+
+        # check allowed toll section values
+        # allowed: empty and those defined in toll_parameters
+        toll_allowed = self.toll_parameters['toll_section_id']
+        mask_allowed = self.RP['toll_section'].isin(toll_allowed) \
+                       | self.RP['toll_section'].isna()
+        if not np.all(mask_allowed):
+            unallowed_values = self.RP \
+                .loc[~mask_allowed, 'toll_section'].unique()
+            df_unallowed = self.RP.loc[~mask_allowed,
+                                       ['variant', 'toll_section']]
+            raise ValueError(
+                "Entries in column toll_section of road parameters "
+                "must be either empty or defined in toll_parameters."
+                f"\nValues {unallowed_values} were not defined."
+                f"\n{df_unallowed}"
+            )
+
+        # detect duplicates in (id_road_section, variant)
+        RP_no_index = self.RP.reset_index()
+        mask_duplicates = RP_no_index[['id_road_section', 'variant']].duplicated()
+        df_duplicates = mask_duplicates[mask_duplicates]
+        if df_duplicates.index.size > 0:
+            raise ValueError(
+                "Pairs of values (id_road_section, variant)"
+                f"must not be duplicated in road parameters."
+                f"\nDuplicates:\n"
+                f"{df_duplicates[['id_road_section', 'variant']]}")
+
+    def _verify_intensity_velocity(self, df_ver, variant, s_description):
+        if self.verbose:
+            print(f'Verifying {s_description}...')
+        df = df_ver.reset_index()
+
+        # verify presence of index columns
+        for col in ['id_road_section', 'vehicle']:
+            if col not in df.columns:
+                raise ValueError(f"'{col}' must be among the columns "
+                                 f"of {s_description}.")
+
+        RP_index = self.RP[self.RP['variant']==variant].index
+        if set(df['id_road_section']) != set(RP_index):
+            raise ValueError(f"Values in 'id_road_section' of {s_description} "
+                             f"must be identical to the index "
+                             f"of road parameters.")
+
+        extra_vehicles = np.setdiff1d(df['vehicle'], self.VEHICLE_TYPES)
+        if extra_vehicles.size > 0:
+            raise ValueError(f"Values in 'vehicle' of {s_description}"
+                             f"must be from {self.VEHICLE_TYPES}.\n"
+                             f"{extra_vehicles} are not allowed.")
+
+        # detect duplicates in (id_road_section, vehicle)
+        mask_duplicates = df[['id_road_section', 'vehicle']].duplicated()
+        df_duplicates = df[mask_duplicates]
+        if df_duplicates.index.size > 0:
+            raise ValueError("Pairs of values (id_road_section, vehicle)"
+                             f"must not be duplicated in {s_description}."
+                             f"\nDuplicates:\n"
+                             f"{df_duplicates[['id_road_section', 'vehicle']]}")
+
+    def _verify_custom_accident_rates(self):
+        if self.verbose:
+            print('Verifying custom accident rates...')
+        # verify accident columns
+        if set(self.params_raw['r_acc_c'].columns) != set(self.ACCIDENT_COLUMNS):
+            raise ValueError(
+                "The columns of custom accident rates "
+                 f"dataframe must be {self.ACCIDENT_COLUMNS}.\n"
+                 "Current columns are:\n"
+                 f"{self.params_raw['r_acc_c'].columns}"
+            )
+
+        # soft warning for empty dataframe
+        if self.verbose:
+            if self.params_raw['r_acc_c'].index.size == 0:
+                print("Warning:\n"
+                      "Custom accident rates not provided. "
+                      "Running wrapper methods such as "
+                      "perform_economic_analysis may result in an error.")
+        # TODO: verify numerical values
+
+    def _verify_toll_parameters(self):
+        if self.verbose:
+            print('Verifying toll parameters...')
+        # verify columns
+        TP_columns = self.toll_parameters.columns
+        missing_columns = np.setdiff1d(self.TOLL_PARAMETERS_COLUMNS,
+                                       TP_columns)
+        extra_columns = np.setdiff1d(TP_columns,
+                                     self.TOLL_PARAMETERS_COLUMNS)
+
+        if set(TP_columns) != set(self.TOLL_PARAMETERS_COLUMNS):
+            raise ValueError("Columns of toll parameters must be "
+                             f"{self.TOLL_PARAMETERS_COLUMNS}. \n"
+                             f"missing: {missing_columns}\n"
+                             f"extra: {extra_columns}")
+
+        # verify toll section types - nan or allowed category from Guidebook
+        allowed_values = self.TSTYPES_E + self.TSTYPES_I
+        for col in ['toll_section_type_0', 'toll_section_type_1']:
+            # check if empty or one of allowed values
+            mask_allowed = self.toll_parameters[col].isin(allowed_values)\
+                           | self.toll_parameters[col].isna()
+            if not np.all(mask_allowed):
+                unallowed_values = self.toll_parameters\
+                                        .loc[~mask_allowed, col].unique()
+                raise ValueError(
+                    f"Values {unallowed_values} not permitted "
+                    f"in column '{col}'. Use only "
+                    f"{allowed_values} or leave empty."
+                )
+
     def _wrangle_capex(self):
         """Collect capex."""
-
-        # TODO check integrity
 
         # replace empty cells with zeros
         self.C_fin.fillna(0, inplace=True)
@@ -962,6 +1315,10 @@ class RoadCBA(GenericRoadCBA):
             columns=self.yrs,
             index=self.RP.index)
 
+        # set index on RP back to original columns
+        self.RP.reset_index(inplace=True)
+        self.RP.set_index('id_road_section', inplace=True)
+
         self.L0 = self.L.loc[(slice(None), 0), :]
         self.L0 = self.L0.reset_index().drop(columns='variant')\
                       .set_index('id_road_section')
@@ -1101,7 +1458,7 @@ class RoadCBA(GenericRoadCBA):
         # acceleration-dependent part
         ##
 
-        self.RP = self.RP.reset_index().set_index('id_road_section')
+        # self.RP = self.RP.reset_index().set_index('id_road_section')
 
         # time matrix of acceleration ratios - variant 0, 1
         acceleration_mat0 = self.RP.loc[self.RP['variant'] == 0,
@@ -1111,9 +1468,9 @@ class RoadCBA(GenericRoadCBA):
                                         self.ACCELERATION_COLUMNS] \
                                     .stack().to_frame()
 
-        # reindex to the original columns
-        self.RP = self.RP.reset_index()\
-                         .set_index(['id_road_section', 'variant'])
+        # # reindex to the original columns
+        # self.RP = self.RP.reset_index()\
+        #                  .set_index(['id_road_section', 'variant'])
 
         acceleration_mat0.columns = ['ratio']
         acceleration_mat0.index.names = ['id_road_section', 'acceleration']
@@ -1179,9 +1536,26 @@ class RoadCBA(GenericRoadCBA):
         assert self.QF0 is not None, "Compute matrix of fuel consumption (QF0) first."
         assert self.QF1 is not None, "Compute matrix of fuel consumption (QF1) first."
 
+        # # merge environment variable onto intensity dataframe
+        # I0_env = pd.merge(self.I0.reset_index(),
+        #                   self.RP.loc[(slice(None), 0), :] \
+        #                   .reset_index()[['id_road_section', 'environment']],
+        #                   how='left',
+        #                   on='id_road_section')
+        # I0_env.set_index(['id_road_section', 'vehicle', 'environment'],
+        #                  inplace=True)
+        #
+        # I1_env = pd.merge(self.I1.reset_index(),
+        #                   self.RP.loc[(slice(None), 1), :] \
+        #                   .reset_index()[['id_road_section', 'environment']],
+        #                   how='left',
+        #                   on='id_road_section')
+        # I1_env.set_index(['id_road_section', 'vehicle', 'environment'],
+        #                  inplace=True)
+
         # merge environment variable onto intensity dataframe
         I0_env = pd.merge(self.I0.reset_index(),
-                          self.RP.loc[(slice(None), 0), :] \
+                          self.RP[self.RP['variant'] == 0] \
                           .reset_index()[['id_road_section', 'environment']],
                           how='left',
                           on='id_road_section')
@@ -1189,7 +1563,7 @@ class RoadCBA(GenericRoadCBA):
                          inplace=True)
 
         I1_env = pd.merge(self.I1.reset_index(),
-                          self.RP.loc[(slice(None), 1), :] \
+                          self.RP[self.RP['variant'] == 1] \
                           .reset_index()[['id_road_section', 'environment']],
                           how='left',
                           on='id_road_section')
@@ -1220,16 +1594,16 @@ class RoadCBA(GenericRoadCBA):
 
         # merge environment variable onto intensity dataframe
         I0_env = pd.merge(self.I0.reset_index(),
-                          self.RP.loc[(slice(None), 0), :]\
-                            .reset_index()[['id_road_section', 'environment']],
+                          self.RP[self.RP['variant'] == 0] \
+                          .reset_index()[['id_road_section', 'environment']],
                           how='left',
                           on='id_road_section')
         I0_env.set_index(['id_road_section', 'vehicle', 'environment'],
                          inplace=True)
 
         I1_env = pd.merge(self.I1.reset_index(),
-                          self.RP.loc[(slice(None), 1), :] \
-                            .reset_index()[['id_road_section', 'environment']],
+                          self.RP[self.RP['variant'] == 1] \
+                          .reset_index()[['id_road_section', 'environment']],
                           how='left',
                           on='id_road_section')
         I1_env.set_index(['id_road_section', 'vehicle', 'environment'],
@@ -1247,9 +1621,14 @@ class RoadCBA(GenericRoadCBA):
 
     def _compute_accidents(self):
 
+        self.RP = self.RP.reset_index()\
+                                .set_index(['id_road_section', 'variant'])
+
         # accident-affecting columns of road parameters
         RP_acc = self.RP[['section_type', 'road_type',
                           'road_layout', 'accident_rate_name']]
+
+        self.RP = self.RP.reset_index().set_index('id_road_section')
 
         secs_default = pd.merge(RP_acc[RP_acc['accident_rate_name'] == 'default'],
                                     self.params_clean['r_acc_d'],
@@ -1298,8 +1677,8 @@ class RoadCBA(GenericRoadCBA):
                                                  ' parameters first.'
         # need to merge data on road section (tolled length, intensity),
         # toll section id and toll section type
-        self.RP.reset_index(inplace=True)
-        self.RP.set_index('id_road_section', inplace=True)
+        # self.RP.reset_index(inplace=True)
+        # self.RP.set_index('id_road_section', inplace=True)
 
         # number of tolled vehicles - variant 0
         I_tolled_0 = pd.merge(
@@ -1412,12 +1791,11 @@ class RoadCBA(GenericRoadCBA):
         self.NI["income_toll"] = self.I1_fin['toll'].sum() \
                                - self.I0_fin['toll'].sum()
 
-        self.RP.reset_index(inplace=True)
-        self.RP.set_index(['id_road_section', 'variant'], inplace=True)
+        # self.RP.reset_index(inplace=True)
+        # self.RP.set_index(['id_road_section', 'variant'], inplace=True)
 
     def compute_costs_benefits(self):
         """Compute financial and economic costs and benefits"""
-        # TODO: integrity verification
 
         # unit costs
         if self.verbose:
@@ -1441,6 +1819,8 @@ class RoadCBA(GenericRoadCBA):
         self._compute_travel_time_matrix()
 
         self._compute_vtts()
+        if self.include_freight_time:
+            self._compute_vfts()
         self._compute_voc()
         self._compute_fuel_consumption()
         self._compute_fuel_cost()
@@ -1485,3 +1865,181 @@ class RoadCBA(GenericRoadCBA):
 
     def print_financial_indicators(self):
         raise NotImplementedError("To be added.")
+
+    def export_to_unformatted_excel(self, filename='cba_results.xlsx'):
+        """Creates an Excel file with sheets containing inputs
+        and computation results.
+        """
+
+        # create writer
+        writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+
+        # save inputs for documentation
+        self.C_fin.to_excel(writer, sheet_name='capex')
+        self.RP.to_excel(writer, sheet_name='road_parameters')
+        self.toll_parameters.to_excel(writer, sheet_name='toll_parameters')
+        self.params_clean['r_acc_c'].to_excel(writer,
+                                              sheet_name='custom_accident_rates')
+        self.I0.to_excel(writer, sheet_name='intensities_0')
+        self.I1.to_excel(writer, sheet_name='intensities_1')
+        self.V0.to_excel(writer, sheet_name='velocities_0')
+        self.V1.to_excel(writer, sheet_name='velocities_1')
+
+        writer.close()
+
+    def export_to_excel(self, filename='cba_results.xlsx'):
+        # load template excel file
+        wb = opx.load_workbook(self.paramdir + 'minimum_export_template.xlsx')
+
+        # save time-realted parameters for automatic column update
+        # within the template
+        sheet_name = 'Parametre'
+        ws = wb[sheet_name]
+
+        # price level
+        ws['C11'] = self.yr_pl
+        # investment start
+        ws['C13'] = self.yr_i
+        # investment end
+        ws['C14'] = self.yr_op - 1
+        # operation start
+        ws['C15'] = self.yr_op
+
+        # save economic analysis aggreagted results
+        sheet_name = '15 Ekonomická analýza'
+        ws = wb[sheet_name]
+
+        # careful: fixed 30 years
+        eco_tab = ws['D5':'AG15']
+
+        costs_benefits = list(self.df_eco.index.get_level_values('item'))
+
+        # aggregate certain costs and benefits
+        opex_total = self.df_eco.loc[('cost',
+                                        ['opex_maintenance', 'replacements',
+                                         'opex_toll']),
+                     :].sum(axis=0)
+        # aggregate voc
+        voc_total = self.df_eco.loc[('benefit',
+                                       ['voc_l', 'voc_t']),
+                    :].sum(axis=0)
+
+        for col in range(30):
+            yr = self.df_eco.columns[col]
+
+            # CAPEX - Investičné náklady
+            # put the negative due to convention in the Excel file
+            eco_tab[0][col].value = -self.df_eco.loc[('cost', 'capex'), yr]
+            # total OPEX (opex_maintenance, replacements, opex_toll) - Prevádzkové náklady
+            if ('opex_maintenance' in costs_benefits) \
+                    or ('replacements' in costs_benefits) \
+                    or ('opex_toll' in costs_benefits):
+                eco_tab[1][col].value = -opex_total[yr]
+            # vtts - Čas cestujúcich
+            if 'vtts' in costs_benefits:
+                eco_tab[2][col].value = self.df_eco.loc[
+                    ('benefit', 'vtts'), yr]
+            # vfts - Čas tovaru
+            if 'vfts' in costs_benefits:
+                eco_tab[3][col].value = self.df_eco.loc[
+                    ('benefit', 'vfts'), yr]
+            # fuel - Spotreba pohonných látok
+            if 'fuel' in costs_benefits:
+                eco_tab[4][col].value = self.df_eco.loc[
+                    ('benefit', 'fuel'), yr]
+            # total voc (voc_l, voc_t) - Ostatné prevádzkové náklady vozidiel
+            if ('voc_l' in costs_benefits) \
+                    or ('voc_t' in costs_benefits):
+                eco_tab[5][col].value = voc_total[yr]
+            # c_acc - Bezpečnosť
+            if 'c_acc' in costs_benefits:
+                eco_tab[6][col].value = self.df_eco.loc[
+                    ('benefit', 'c_acc'), yr]
+            # em - Znečisťujúce látky
+            if 'em' in costs_benefits:
+                eco_tab[7][col].value = self.df_eco.loc[
+                    ('benefit', 'em'), yr]
+            # ghg - Skleníkové plyny
+            if 'ghg' in costs_benefits:
+                eco_tab[8][col].value = self.df_eco.loc[
+                    ('benefit', 'ghg'), yr]
+            # noise - Hluk
+            if 'noise' in costs_benefits:
+                eco_tab[9][col].value = self.df_eco.loc[
+                    ('benefit', 'noise'), yr]
+            # res_val - Zostatková hodnota
+            if 'ghg' in costs_benefits:
+                eco_tab[10][col].value = self.df_eco.loc[
+                    ('benefit', 'res_val'), yr]
+
+        # save to disk
+        wb.save(filename)
+
+        # create writer
+        with pd.ExcelWriter(filename,
+                            engine='openpyxl',
+                            mode='a') as writer:
+            # save inputs for documentation
+            self.RP.to_excel(writer, sheet_name='road_parameters')
+            self.toll_parameters.to_excel(writer,
+                                            sheet_name='toll_parameters')
+            self.params_clean['r_acc_c'].to_excel(writer,
+                                                    sheet_name='custom_accident_rates')
+            self.I0.to_excel(writer, sheet_name='intensities_0')
+            self.I1.to_excel(writer, sheet_name='intensities_1')
+            self.V0.to_excel(writer, sheet_name='velocities_0')
+            self.V1.to_excel(writer, sheet_name='velocities_1')
+
+            self.C_fin.to_excel(writer, sheet_name='capex')
+
+            # operation costs
+            op_costs = np.union1d(list(self.O0_eco.keys()),
+                                  list(self.O1_eco.keys()))
+            for c in op_costs:
+                try:
+                    self.O0_eco[c].to_excel(
+                        writer,
+                        sheet_name=c + '_eco_0')
+                except:
+                    pass
+                try:
+                    self.O1_eco[c].to_excel(
+                        writer,
+                        sheet_name=c + '_eco_1')
+                except:
+                    pass
+
+            # benefits
+            benefits = np.union1d(list(self.B0.keys()),
+                                  list(self.B1.keys()))
+            for b in benefits:
+                try:
+                    self.B0[b].to_excel(
+                        writer,
+                        sheet_name=b + '_0')
+                except:
+                    pass
+                try:
+                    self.B1[b].to_excel(
+                        writer,
+                        sheet_name=b + '_1')
+                except:
+                    pass
+
+            # income
+            incomes = np.union1d(list(self.I0_fin.keys()),
+                                 list(self.I1_fin.keys()))
+
+            for i in incomes:
+                try:
+                    self.I0_fin[i].to_excel(
+                        writer,
+                        sheet_name=i + '_0')
+                except:
+                    pass
+                try:
+                    self.I1_fin[i].to_excel(
+                        writer,
+                        sheet_name=i + '_1')
+                except:
+                    pass

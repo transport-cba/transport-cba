@@ -13,10 +13,6 @@ class RoadCBA(GenericRoadCBA):
     Implementation of economic evaluation using the methods and parameters
     defined by Slovak Guidelines for CBA appraisal of transport
     projects v3.0.
-
-    example
-
-    from pycba.roads.svk.OPIIv3p0 import RoadCBA
     """
     # OPIIv3p0 specific part
     INPUT_REQUIRED_SHEETS = ['capex', 'road_parameters',
@@ -876,7 +872,7 @@ class RoadCBA(GenericRoadCBA):
             if not np.isreal(x):
                 return False
             else:
-                return x > 0
+                return x >= 0
 
         for col in ['length', 'width']:
             value_is_allowed = self.RP[col].apply(is_nonnegative_number)
@@ -891,7 +887,7 @@ class RoadCBA(GenericRoadCBA):
             if not np.isreal(x):
                 return False
             else:
-                return (x > 0) or np.isnan(x)
+                return (x >= 0) or np.isnan(x)
 
         # non-negative number or empty
         for col in ['area'] + self.ACCELERATION_COLUMNS:

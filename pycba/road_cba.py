@@ -14,8 +14,8 @@ DAYS_YEAR = 365.0
 class RoadCBA(ParamContainer):
     def __init__(self,
             init_year,
-            price_level,
             country,
+            year_price_level=None,
             period=30,
             fin_discount_factor=0.04,
             eco_discount_factor=0.05,
@@ -24,20 +24,21 @@ class RoadCBA(ParamContainer):
         ):
         """
         Inputs
-        ======
+        ------
         - init_year : int, initial year of construction
-        - price_level : int, year of economic analysis
         - country : str, country code
-        - period : int, number of years for the economic analysis
+        - year_price_level : int, year of economic analysis, by default same as init_year
+        - period : int, number of years for the economic analysis, default 30
         - fin_discount_factor : float, discount factor for financial analysis
         - eco_discount_factor : float, discount factor for economic analysis
-
         """
         self.yr_init = init_year
         self.N_yr = period
         self.yr_end = self.yr_init + self.N_yr - 1
-        self.pl = price_level
-        if self.yr_init != self.pl:
+        self.yr_price_level = year_price_level
+        if self.yr_price_level is None:
+            self.yr_price_level = self.yr_init
+        if self.yr_init != self.yr_price_level:
             print("Warning: start year not same as price level.")
         self.N_yr_build = None
         self.N_yr_op = None
@@ -56,11 +57,11 @@ class RoadCBA(ParamContainer):
         self.verbose = verbose
 
         # define empty frames
-        self.RP = None       # road parameters
-        self.C_fin = None
-        self.C_eco = None
-        self.O0_fin = None
-        self.O0_eco = None
+        self.RP = None # road parameters
+        self.C_fin = None # financial capex
+        self.C_eco = None # economic capex
+        self.O0_fin = None # financial opex in variant 0
+        self.O0_eco = None # economic opex in variant 0
         self.O1_fin = None
         self.O1_eco = None
 
@@ -76,13 +77,16 @@ class RoadCBA(ParamContainer):
         self.QF0 = None     # quantity of fuel burnt on a section in variant 0
         self.QF1 = None     # quantity of fuel burnt on a section in variant 1
 
-        self.UC = {}        # unit costs
+        self.UC = {}        # unit costs for various components
         self.B0 = {}        # benefits in 0th variant
         self.B1 = {}        # benefits in 1st variant
         self.NB = {}        # net benefits
         self.NC = {}        # net costs
 
-        super().__init__(self.country, self.pl, verbose=self.verbose)
+        # initialise resulting variables
+        self.economic_indicators = None
+
+        super().__init__(self.country, self.yr_price_level, verbose=self.verbose)
 
 
     # =====
@@ -94,7 +98,7 @@ class RoadCBA(ParamContainer):
         if source is None:
             super().read_raw_params()
         else:
-            raise NotImplementedError("To add soon.")
+            raise NotImplementedError()
 
         super().adjust_cpi(yr_max=self.yr_end)
         super().clean_params()
@@ -104,7 +108,7 @@ class RoadCBA(ParamContainer):
     
     def replace_parameter(self, param):
         """Replace a specific parameter frame"""
-        raise NotImplementedError("To add soon.")
+        raise NotImplementedError()
 
 
     def _assign_core_variables(self):
@@ -170,14 +174,16 @@ class RoadCBA(ParamContainer):
             df_vel_0,
             df_vel_1
         ):
-        """Read the input dataframes.
+        """Read input dataframes.
 
         Inputs
         ------
-        - road parameters
-        - capital investment (CAPEX)
-        - intensities in variants 0 and 1
-        - velocities in variant 0 and 1"""
+        - road parameters : pd.dataframe
+        - capital investment (CAPEX) : pd.dataframe
+        - intensities in variant 0 : pd.dataframe
+        - intensities in variant 1 : pd.dataframe
+        - velocities in variant 0 : pd.dataframe
+        - velocities in variant 1 : pd.dataframe"""
         if self.verbose:
             print("Reading project inputs from df...")
         self.RP = df_road_params
@@ -219,63 +225,8 @@ class RoadCBA(ParamContainer):
         self._wrangle_inputs()
 
 
-#    def read_project_inputs_csv(self,
-#                                file_road_params,
-#                                file_capex,
-#                                file_int_0,
-#                                file_int_1,
-#                                verbose=False
-#                                ):
-#        if verbose:
-#            print("Reading project inputs from csv...")
-#        self.RP = pd.read_csv(file_road_params, index_col=0)
-#        self.C_fin = pd.read_csv(file_capex, index_col=0)
-#        self.I0 = pd.read_csv(file_int_0).reset_index()
-#        self_I0.set_index(["id_section", "vehicle"], inplace=True)
-#        self.I1 = pd.read_csv(file_int_1).reset_index()
-#        self.I1.reset_index(inplace=True)
-#        self.I1.set_index(["id_section", "vehicle"], inplace=True)
-#
-#        # assign core variables
-#        self._assign_remaining_years()
-#        self.secs_0 = self.RP[self.RP.variant_0 == 1].index
-#        self.secs_1 = self.RP[self.RP.variant_1 == 1].index
-#        self.secs_old = \
-#            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 1)].index
-#        self.secs_repl = \
-#            self.RP[(self.RP.variant_0 == 1) & (self.RP.variant_1 == 0)].index
-#        self.secs_new = \
-#            self.RP[(self.RP.variant_0 == 0) & (self.RP.variant_1 == 1)].index
-
-
-#    def read_velocities_csv(self, csv_vel_0, csv_vel_1, verbose=False):
-#        """Read the dataframe of velocities ordered by project section
-#        and vehicle category"""
-#        if csv_vel_0[-3:] != "csv" or csv_vel_1[-3:] != "csv":
-#            print("One of files does not have required extension: csv.")
-#
-#        if verbose:
-#            print("Reading velocities from csv...")
-#        self.V0 = pd.read_csv(csv_vel_0).reset_index()
-#        self.V0.set_index(["id_section", "vehicle"], inplace=True)
-#        self.V1 = pd.read_csv(csv_vel_1).reset_index()
-#        self.V1.set_index(["id_section", "vehicle"], inplace=True)
-#
-#
-#    def read_velocities_excel(self, xls_vel, verbose=False):
-#        """Read the dataframe of velocities from one excel file."""
-#        if not xls_vel.split(".")[-1] in ["xls", "xlsx"]:
-#            print("File does not have the required extension: xls, xlsx.")
-#
-#        if verbose:
-#            print("Reading velocities xls/xlsx...")
-#        self.V0 = pd.read_excel(xls_vel, sheet_name="velocities_0")
-#        self.V0.set_index(["id_section", "vehicle"], inplace=True)
-#        self.V1 = pd.read_excel(xls_vel, sheet_name="velocities_1")
-#        self.V1.set_index(["id_section", "vehicle"], inplace=True)
-
-
     def _verify_input_integrity(self):
+        """Perform various checks on the quality of the inputs"""
         int_idx = ["id_section", "vehicle"]
         assert self.I0 is not None, "I0 not defined."
         assert self.I0.index.names == int_idx, "Incorrect indices of I0."
@@ -298,8 +249,7 @@ class RoadCBA(ParamContainer):
 #            "slope_stabilisation", "retaining_walls", "noise_barriers",\
 #            "safety_features", "supervision", "planning_design"]
 #        assert self.C_fin is not None, "CAPEX not defined."
-#        assert set(self.C_fin.index) == set(capex_idx), \
-#            "Index of CAPEX not correct."
+#        assert set(self.C_fin.index) == set(capex_idx), "Index of CAPEX not correct."
 
 
     def _verify_param_integrity(self):
@@ -513,8 +463,7 @@ class RoadCBA(ParamContainer):
 
         # greenhouse unit cost computed separately due to its structure
         b = "c_ghg"
-        self.UC[b] = \
-            pd.DataFrame(self.df_clean[b].loc[self.yr_init:self.yr_end, "value"])
+        self.UC[b] = pd.DataFrame(self.df_clean[b].loc[self.yr_init:self.yr_end, "value"])
         self.UC[b].columns = ["co2eq"] 
         self.UC[b] = self.UC[b].T
 
@@ -541,8 +490,7 @@ class RoadCBA(ParamContainer):
         self.mask0 = mask0.reorder_levels(lvl_order).sort_index()
         
         # variant 1
-        mask1 = pd.DataFrame(0, \
-            index=self.df_clean["c_op"].index, columns=self.yrs_op)
+        mask1 = pd.DataFrame(0, index=self.df_clean["c_op"].index, columns=self.yrs_op)
         
         for itm in mask1.index:
             p = self.df_clean["c_op"].loc[itm, "periodicity"].astype(int)
@@ -563,9 +511,10 @@ class RoadCBA(ParamContainer):
         """Create the matrix of lengs with years as columns"""
         if self.verbose:
             print("Creating length matrix...")
-        self.L = pd.DataFrame(\
-            np.outer(self.RP.length, np.ones_like(self.yrs)), \
-            columns=self.yrs, index=self.RP.index)
+        self.L = pd.DataFrame(
+            np.outer(self.RP.length, np.ones_like(self.yrs)),
+            columns=self.yrs, index=self.RP.index
+        )
 
 
     def _compute_travel_time_matrix(self):
@@ -599,7 +548,7 @@ class RoadCBA(ParamContainer):
 
         self.compute_time = time.time() - ti
         print(f"Computation time: {self.compute_time} s.")
-        return self.economic_indicators()
+        return self.economic_indicators
 
 
     def compute_costs_benefits(self):
@@ -664,15 +613,11 @@ class RoadCBA(ParamContainer):
         # format economic indicators
         vals = [self.ENPV / 1e6, self.ERR * 100.0, self.EBCR]
         vals = [np.round(val, 3) for val in vals]
-        self.cba_indicators = pd.DataFrame({
+        self.economic_indicators = pd.DataFrame({
             "Quantity": ["ENPV", "ERR", "BCR"],
             "Unit": ["M "+self.currency.upper(), "%", ""],
             "Value": vals,
         })
-
-   
-    def economic_indicators(self):
-        return self.cba_indicators
 
 
     def _compute_vtts(self):
@@ -853,7 +798,7 @@ class RoadCBA(ParamContainer):
             for benefit in ["vtts", "voc", "fuel", "accidents", "ghg", "emissions", "noise"]:
                 self.B0[benefit].to_excel(writer, sheet_name=f"{benefit}_0")
                 self.B1[benefit].to_excel(writer, sheet_name=f"{benefit}_1")
-            self.cba_indicators.to_excel(writer, sheet_name="indicators")
+            self.economic_indicators.to_excel(writer, sheet_name="indicators")
         
         print(f"CBA output saved to {fname_res}")     
 

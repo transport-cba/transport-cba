@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pycba",
-    version="0.0.1",
+    version="0.0.2",
     author="Peter Vanya",
     author_email="peter.vanya@gmail.com",
     description="A Python package for cost-benefit analysis of infrastructure projects",

@@ -1,36 +1,40 @@
 # pycba
-A Python module for cost-benefit analysis of infrastructure projects
 
+A Python module for cost-benefit analysis of infrastructure projects.
 
-This module provides a consistent way to evaluate economic efficiency
-of a road project with well-defined inputs and parameters.
-It offers a significantly wider options for analysis of alternatives
-than Excel.
+Provides a consistent way to evaluate economic efficiency
+of road projects with well-defined inputs and parameters.
+
+Main benefits compared to traiditional Excel-based approach:
+- several orders of magnitude faster and cheaper
+- wider options for analysis of alternative scenarios
+- significantly lower margin for error
 
 
 ## Inputs
-Required project inputs:
-* capital expenditures (CAPEX) with pre-defined items
-* parameters of old and new road sections (length, width, number of lanes etc)
-* intensities in variant 0 and 1 (without and with the project)
-* velocities in variant 0 and 1
-
-Options to load project inputs:
-* separately as Pandas dataframes
-* from an Excel file with sheet names:
+Load project inputs as an Excel file with following sheet names:
   `road_params, capex, intensities_0, intensities_1, velocities_0, velocities_1`
+
+Meaning of required inputs:
+* capital expenditures (CAPEX) with pre-defined items
+* parameters of road sections (length, width, number of lanes etc)
+* vehicle intensities in variant 0 and 1 (without and with the project) by road segment
+* vehicle velocities in variant 0 and 1 by segment
+
+For illustration, download sample input (see below).
 
 
 ## Outputs
 * Dataframe of costs and benefits
 * Economic indicators:
-  - net present value (ENPV)
-  - internal rate of return (ERR)
+  - economic net present value (ENPV)
+  - economic internal rate of return (ERR)
   - benefit to cost ratio (BCR)
+  - dataframes with breakdown of relevant benefits by years
 
 
 ## Example
-Values might differ slightly.
+NB: Values might differ slightly.
 
 ```python
 >>> from pycba import RoadCBA
@@ -38,7 +42,7 @@ Values might differ slightly.
 
 >>> bypass = load_sample_bypass()
 
->>> cba = RoadCBA(2020, 2020, "svk")
+>>> cba = RoadCBA(2020, "svk")
 >>> cba.read_project_inputs(
 ...     bypass["road_params"],
 ...     bypass["capex"],
@@ -48,14 +52,10 @@ Values might differ slightly.
 ...     bypass["velocities_1"]
 ... )
 >>> cba.economic_analysis()
->>> res = rcba.economic_indicators()
->>> res
+>>> cba.economic_indicators
 ```
 |    |     Value | Unit   |
 |---:|----------:|:-------|
 |  0 | 3.33583   | M EUR  |
 |  1 | 0.0562048 | %      |
 |  2 | 1.07576   | nan    |
-
-
-

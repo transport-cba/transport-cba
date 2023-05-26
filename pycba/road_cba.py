@@ -332,7 +332,7 @@ class RoadCBA(ParamContainer):
         self.C_fin.fillna(0, inplace=True)
 
         # collect investment before the first year
-        capex_yrs = list(self.C_fin.columns)
+        capex_yrs = self.C_fin.columns
         if len(capex_yrs[capex_yrs < self.yr_init]) > 0:
             if self.verbose:
                 print(f"Squeezing CAPEX {capex_yrs} into the given economic period starting with {self.yr_init}...")
@@ -657,7 +657,7 @@ class RoadCBA(ParamContainer):
 
         self.df_enpv = pd.DataFrame(
             self.df_eco.apply(
-                lambda x: np.npv(self.r_eco, x), axis=1
+                lambda x: npf.npv(self.r_eco, x), axis=1
             ).round(2), columns=["value"]
         )
 

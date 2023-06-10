@@ -11,6 +11,11 @@ Main benefits compared to traiditional Excel-based approach:
 - significantly lower margin for error
 
 
+## Installation
+```
+pip install git+https://github.com/petervanya/pycba.git
+```
+
 ## Inputs
 Load project inputs as an Excel file with following sheet names:
   `road_params, capex, intensities_0, intensities_1, velocities_0, velocities_1`
@@ -58,4 +63,4 @@ NB: Values might differ slightly.
 |---:|----------:|:-------|
 |  0 | 3.33583   | M EUR  |
 |  1 | 0.0562048 | %      |
-|  2 | 1.07576   | nan    |
+|  2 | 1.07576   |        |

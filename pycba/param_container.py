@@ -81,12 +81,12 @@ class ParamContainer(object):
         self.df_raw["noise"] =\
             pd.read_csv(self.dirn + "noise.csv", index_col=0)
 
-    def adjust_cpi(self, infl=0.02, yr_min=2000, yr_max=2100):
+    def adjust_cpi(self, infl=0.02, yr_min=1990, yr_max=2100):
         """Fill in mising values and compute cumulative inflation 
         to be able to adjust the price level"""
         assert hasattr(self, "cpi"), "Load parameters first."
         if self.verbose:
-            print("Adjusting CPI...")
+            print(f"Adjusting CPI from {yr_min} to {yr_max}...")
 
         self.cpi = self.cpi.reindex(arange(yr_min, yr_max+1))
         self.cpi["cpi"].fillna(infl, inplace=True)
@@ -99,13 +99,29 @@ class ParamContainer(object):
 
         # backward
         for i in range(ix-1, -1, -1):
-            self.cpi.iloc[i]["cpi_index"] = \
-                self.cpi.iloc[i+1].cpi_index * (self.cpi.iloc[i].cpi + 1.0)
+            self.cpi.iloc[i]["cpi_index"] = self.cpi.iloc[i+1].cpi_index * (self.cpi.iloc[i].cpi + 1.0)
         
         # forward
         for i in range(ix+1, len(self.cpi)):
-            self.cpi.iloc[i]["cpi_index"] = \
-                self.cpi.iloc[i-1].cpi_index * (self.cpi.iloc[i-1].cpi + 1.0)
+            self.cpi.iloc[i]["cpi_index"] = self.cpi.iloc[i-1].cpi_index * (self.cpi.iloc[i-1].cpi + 1.0)
+            
+    def adjust_gdp_growth(self, yr_min=1990, yr_max=2100):
+        """Fill in values for GDP growth to a maximum range"""
+        assert hasattr(self, "gdp_growth"), "Load parameters first."
+        if self.verbose:
+            print(f"Adjusting GDP growth dates from {yr_min} to {yr_max}...")
+
+        self.gdp_growth = self.gdp_growth.reindex(arange(yr_min, yr_max+1))
+        self.gdp_growth = self.gdp_growth.fillna(method="ffill").fillna(method="bfill")
+
+    def adjust_greenhouse_cost(self, yr_min=1990, yr_max=2100):
+        """Fill in values for GDP growth to a maximum range"""
+        assert hasattr(self, "df_raw"), "Load parameters first."
+        if self.verbose:
+            print(f"Adjusting greenhouse cost dates from {yr_min} to {yr_max}...")
+
+        self.df_raw["c_ghg"] = self.df_raw["c_ghg"].reindex(arange(yr_min, yr_max+1))
+        self.df_raw["c_ghg"] = self.df_raw["c_ghg"].fillna(method="ffill").fillna(method="bfill")
 
     def clean_params(self):
         """Incorporate scale into values.
@@ -126,8 +142,7 @@ class ParamContainer(object):
             if "scale" in self.df_clean[c].columns:
                 if self.verbose:
                     print("Changing scale of %s" % c)
-                self.df_clean[c]["value"] =\
-                   self.df_clean[c].value * self.df_clean[c].scale
+                self.df_clean[c]["value"] = self.df_clean[c].value * self.df_clean[c].scale
                 self.df_clean[c].drop(columns=["scale"], inplace=True)
 
     def adjust_price_level(self):
@@ -166,24 +181,24 @@ class ParamContainer(object):
         if "distance" in self.df_clean["vtts"].columns:
             if self.verbose:
                 print("Averaging VTTS over distance type.")
-            gr = self.df_clean["vtts"]\
-                .groupby(by=["vehicle", "substance", "purpose",\
-                "gdp_growth_adjustment"])
+            gr = self.df_clean["vtts"].groupby(
+                by=["vehicle", "substance", "purpose", "gdp_growth_adjustment"])
             vtts = gr["value"].mean()
             vtts = vtts.reset_index()
         else:
             vtts = self.df_clean["vtts"].copy()
 
         # add trip purpose and merge
-        r_tp = self.df_clean["r_tp"].reset_index().melt(id_vars="vehicle", \
-            var_name="purpose", value_name="purpose_ratio")
+        r_tp = self.df_clean["r_tp"].reset_index().melt(
+            id_vars="vehicle", var_name="purpose", value_name="purpose_ratio")
         vtts = pd.merge(vtts, r_tp, how="left", on=["vehicle", "purpose"])
 
         # add passenger occupancy
         self.df_clean["occ_p"]["substance"] = "passengers"
         self.df_clean["occ_p"].reset_index(inplace=True)
         
-        vtts = pd.merge(vtts, \
+        vtts = pd.merge(
+            vtts,
             self.df_clean["occ_p"][["vehicle", "value", "substance"]],
             how="left", on=["vehicle", "substance"], suffixes=("", "_occ"))
 
@@ -202,8 +217,8 @@ class ParamContainer(object):
         vtts.drop(columns=["value_subst", "value_occ"], inplace=True)
 
         # contract by substance
-        vtts = vtts.groupby(by=["vehicle", "purpose",\
-            "gdp_growth_adjustment", "purpose_ratio"])\
+        vtts = vtts.groupby(
+            by=["vehicle", "purpose", "gdp_growth_adjustment", "purpose_ratio"])\
             ["value"].sum().reset_index()
 
         # unify gdp growth adjustment by trip purpose ratio
@@ -225,8 +240,7 @@ class ParamContainer(object):
 
         # convert to kg/km and add conversion factors
         c = "c_fuel"
-        self.df_clean[c]["value"] = \
-            self.df_clean[c].value / self.fuel_rho.value
+        self.df_clean[c]["value"] = self.df_clean[c].value / self.fuel_rho.value
         self.df_clean[c] *= self.df_clean["conv_fac"].loc["factor", "fuel"]
 
         c = "fuel_coeffs"
@@ -249,8 +263,7 @@ class ParamContainer(object):
             "correct_pass_per_acc"], inplace=True)
         
         self.df_clean["r_acc"]["value"] = \
-            self.df_clean["r_acc"]\
-            [["fatal", "severe_injury", "light_injury", "damage"]]\
+            self.df_clean["r_acc"][["fatal", "severe_injury", "light_injury", "damage"]]\
             .values @ self.df_clean["c_acc"].value.values
 
         self.df_clean["r_acc"]["gdp_growth_adjustment"] = \
@@ -258,8 +271,7 @@ class ParamContainer(object):
         
         # copy to the cost dataframe
         self.df_clean["c_acc"] = self.df_clean["r_acc"]\
-            [["lanes", "layout", "environment", "value", \
-                "gdp_growth_adjustment"]].copy()
+            [["lanes", "layout", "environment", "value", "gdp_growth_adjustment"]].copy()
 
         self.df_clean["c_acc"].reset_index(inplace=True)
         self.df_clean["c_acc"].set_index(\
@@ -267,8 +279,7 @@ class ParamContainer(object):
 
     def _wrangle_greenhouse(self):
         b = "r_ghg"
-        self.df_clean[b]["value"] = \
-            self.df_clean[b].value * self.df_clean[b].factor
+        self.df_clean[b]["value"] = self.df_clean[b].value * self.df_clean[b].factor
 
         gr = self.df_clean[b].groupby(["vehicle", "fuel"])["value"].sum()
         self.df_clean[b] = pd.DataFrame(gr).round(0)
@@ -276,23 +287,19 @@ class ParamContainer(object):
     def _wrangle_emissions(self):
         b = "c_em"
         self.df_clean[b].reset_index(inplace=True)
-        self.df_clean[b].set_index(["polluant", "environment"], \
-            inplace=True)
+        self.df_clean[b].set_index(["polluant", "environment"], inplace=True)
         self.df_clean[b] = self.df_clean[b].sort_index()
 
         b = "r_em"
         self.df_clean[b].reset_index(inplace=True)
-        self.df_clean[b].set_index(["polluant", "vehicle", "fuel"], \
-            inplace=True)
+        self.df_clean[b].set_index(["polluant", "vehicle", "fuel"], inplace=True)
         self.df_clean[b] = self.df_clean[b].sort_index()
 
     def _wrangle_noise(self):
         b = "noise"
-        self.df_clean[b] = self.df_clean[b]\
-            [self.df_clean[b].traffic_type == "thin"]
+        self.df_clean[b] = self.df_clean[b][self.df_clean[b].traffic_type == "thin"]
         self.df_clean[b].drop(columns=["traffic_type"], inplace=True)
-        self.df_clean[b]["value2"] = self.df_clean[b].value\
-            * self.df_clean[b].ratio
+        self.df_clean[b]["value2"] = self.df_clean[b].value * self.df_clean[b].ratio
         gr = self.df_clean[b].groupby(["vehicle", "environment", "gdp_growth_adjustment"])
 
         self.df_clean[b] = gr["value2"].sum()

@@ -10,8 +10,21 @@ VEHICLE_TYPES = ["car", "lgv", "hgv", "bus"]
 ENVIRONMENTS = ["intravilan", "extravilan"]
 DAYS_YEAR = 365.0
 
+INPUT_SHEETS = ['road_params', 'capex', 'intensities_0', 'intensities_1', 'velocities_0', 'velocities_1']
+
+IDX_CAPEX = ["land", "pavements", "bridges", "tunnels", "buildings",
+    "slope_stabilisation", "retaining_walls", "noise_barriers",
+    "safety_features", "supervision", "planning_design"]
+
+COLS_ROAD_PARAMS = ["name", "variant_0", "variant_1", "length",
+    "length_bridges", "length_tunnels", "category", "lanes",
+    "environment", "width", "layout", "toll_sections"]
+
+IDX_NAME_VEL = ["id_section", "vehicle"]
+
 
 class RoadCBA(ParamContainer):
+    """The object to perform CBA computation for roads"""
     def __init__(self,
             init_year,
             country,
@@ -86,8 +99,13 @@ class RoadCBA(ParamContainer):
         # initialise resulting variables
         self.economic_indicators = None
 
+        # initialise parameter container
         super().__init__(self.country, self.yr_price_level, verbose=self.verbose)
 
+        # intro information
+        print("Computing cost benefit analysis...")
+        print(f"Initial year: {self.yr_init}")
+        print(f"Price level: {self.yr_price_level}")
 
     # =====
     # Initialisation functions
@@ -100,7 +118,9 @@ class RoadCBA(ParamContainer):
         else:
             raise NotImplementedError()
 
-        super().adjust_cpi(yr_max=self.yr_end)
+        super().adjust_cpi()
+        super().adjust_gdp_growth()
+        super().adjust_greenhouse_cost()
         super().clean_params()
         super().adjust_price_level()
         super().wrangle_params()
@@ -118,8 +138,7 @@ class RoadCBA(ParamContainer):
             self.yr_op = int(self.C_fin.columns[-1]) + 1
             self.N_yr_build = len(self.C_fin.columns)
             self.N_yr_op = self.N_yr - self.N_yr_build
-            self.yrs_op = \
-                np.arange(self.yr_init + self.N_yr_build, self.yr_init + self.N_yr)
+            self.yrs_op = np.arange(self.yr_init + self.N_yr_build, self.yr_init + self.N_yr)
 
             self.secs = self.RP.index
             self.secs_0 = self.RP[self.RP.variant_0 == 1].index
@@ -146,24 +165,20 @@ class RoadCBA(ParamContainer):
         self.V0 = self.V0.loc[self.secs_0]
 
         if self.I0.columns[-1] < self.yr_end and self.verbose:
-            print("Warning: I0 not forecast until the end of period,\
-                filling by zeros.")
-        self.I0 = self.I0[self.yrs].fillna(0)
+            print("warning: I0 not forecast until the end of period, fill by zeros")
+        # self.I0 = self.I0[self.yrs].fillna(0)
 
         if self.I1.columns[-1] < self.yr_end and self.verbose:
-            print("Warning: I0 not forecast until the end of period,\
-                filling by zeros.")
-        self.I1 = self.I1[self.yrs].fillna(0)
+            print("warning: I1 not forecast until the end of period, fill by zeros")
+        # self.I1 = self.I1[self.yrs].fillna(0)
 
         if self.V0.columns[-1] < self.yr_end and self.verbose:
-            print("Warning: V0 not forecast until the end of period,\
-                filling by zeros.")
-        self.V0 = self.V0[self.yrs].fillna(0)
+            print("warning: V0 not forecast until the end of period, fill by zeros")
+        # self.V0 = self.V0[self.yrs].fillna(0)
 
         if self.V1.columns[-1] < self.yr_end and self.verbose:
-            print("Warning: V0 not forecast until the end of period,\
-                filling by zeros.")
-        self.V1 = self.V1[self.yrs].fillna(0)
+            print("warning: V0 not forecast until the end of period, fill by zeros")
+        # self.V1 = self.V1[self.yrs].fillna(0)
 
 
     def read_project_inputs(self,
@@ -183,20 +198,31 @@ class RoadCBA(ParamContainer):
         - intensities in variant 0 : pd.dataframe
         - intensities in variant 1 : pd.dataframe
         - velocities in variant 0 : pd.dataframe
-        - velocities in variant 1 : pd.dataframe"""
+        - velocities in variant 1 : pd.dataframe
+        """
         if self.verbose:
-            print("Reading project inputs from df...")
+            print("Reading project inputs from dataframes...")
         self.RP = df_road_params
+
         self.C_fin = df_capex
         self.C_fin.columns = self.C_fin.columns.astype(int)
+        self.C_fin = self.C_fin[sorted(self.C_fin.columns)]
+
         self.I0 = df_int_0
         self.I0.columns = self.I0.columns.astype(int)
+        self.I0 = self.I0[sorted(self.I0.columns)]
+       
         self.I1 = df_int_1
         self.I1.columns = self.I1.columns.astype(int)
+        self.I1 = self.I1[sorted(self.I1.columns)]
+
         self.V0 = df_vel_0
         self.V0.columns = self.V0.columns.astype(int)
+        self.V0 = self.V0[sorted(self.V0.columns)]
+        
         self.V1 = df_vel_1
         self.V1.columns = self.V1.columns.astype(int)
+        self.V1 = self.V1[sorted(self.V1.columns)]
 
         # assign core variables
         self._assign_core_variables()
@@ -204,22 +230,41 @@ class RoadCBA(ParamContainer):
 
     
     def read_project_inputs_excel(self, file_xls):
-        assert file_xls.split(".")[-1] in ["xls", "xlsx"], \
-            "Invalid file extension, expected xls or xlsx."
+        if not file_xls.split(".")[-1] in ["xls", "xlsx"]:
+            raise ValueError(f"invalid file extension, expected xls or xlsx")
+        
         if self.verbose:
             print("Reading project inputs from %s..." % file_xls)
+
         xls = pd.ExcelFile(file_xls)
+        
+        if set(xls.sheet_names) != set(INPUT_SHEETS):
+            raise ValueError(f"wrong sheet names, submitted: {xls.sheet_names}, required: {INPUT_SHEETS}")
+
+        # read the sheets
         self.RP = xls.parse("road_params", index_col=0)
         self.C_fin = xls.parse("capex").reset_index(drop=True)
-        self.C_fin.set_index(['item', 'category'], inplace=True)
+        if "category" not in self.C_fin.columns:
+            print("warning: category not in index of CAPEX")
+            self.C_fin.set_index(['item'], inplace=True)
+        else:
+            self.C_fin.set_index(['item', 'category'], inplace=True)
+
         self.I0 = xls.parse("intensities_0").reset_index(drop=True)
         self.I0.set_index(["id_section", "vehicle"], inplace=True)
+        self.I0 = self.I0[sorted(self.I0.columns)]
+
         self.I1 = xls.parse("intensities_1").reset_index(drop=True)
         self.I1.set_index(["id_section", "vehicle"], inplace=True)
+        self.I1 = self.I1[sorted(self.I1.columns)]
+
         self.V0 = xls.parse("velocities_0").reset_index(drop=True)
         self.V0.set_index(["id_section", "vehicle"], inplace=True)
+        self.V0 = self.V0[sorted(self.V0.columns)]
+
         self.V1 = xls.parse("velocities_1").reset_index(drop=True)
         self.V1.set_index(["id_section", "vehicle"], inplace=True)
+        self.V1 = self.V1[sorted(self.V1.columns)]
 
         self._assign_core_variables()
         self._wrangle_inputs()
@@ -227,34 +272,45 @@ class RoadCBA(ParamContainer):
 
     def _verify_input_integrity(self):
         """Perform various checks on the quality of the inputs"""
-        int_idx = ["id_section", "vehicle"]
-        assert self.I0 is not None, "I0 not defined."
-        assert self.I0.index.names == int_idx, "Incorrect indices of I0."
-        assert self.I1 is not None, "I1 not defined."
-        assert self.I1.index.names == int_idx, "Incorrect indices of I1."
+        assert self.I0 is not None, "I0 table undefined"
+        assert self.I0.index.names == IDX_NAME_VEL, f"incorrect indices of I0 table, expect {IDX_NAME_VEL}"
 
-        assert self.V0 is not None, "V0 not defined."
-        assert self.V0.index.names == int_idx, "Incorrect indices of V0."
-        assert self.V1 is not None, "V1 not defined."
-        assert self.V1.index.names == int_idx, "Incorrect indices of V1."
+        assert self.I1 is not None, "I1 table undefined"
+        assert self.I1.index.names == IDX_NAME_VEL, f"incorrect indices of I1 table, expect {IDX_NAME_VEL}"
 
-        rp_cols = ["name", "variant_0", "variant_1", "length", \
-            "length_bridges", "length_tunnels", "category", "lanes", \
-            "environment", "width", "layout", "toll_sections"]
-        assert self.RP is not None, "Road parameters not defined."
-        assert set(self.RP.columns) == set(rp_cols), \
-            f"Incorrect columns of road parameters dataframe. Current: {self.RP.columns}, required: {rp_cols}"
+        assert self.V0 is not None, "V0 table undefined"
+        assert self.V0.index.names == IDX_NAME_VEL, f"incorrect indices of V0 table, expect {IDX_NAME_VEL}"
 
-#        capex_idx = ["land", "pavements", "bridges", "tunnels", "buildings",\
-#            "slope_stabilisation", "retaining_walls", "noise_barriers",\
-#            "safety_features", "supervision", "planning_design"]
-#        assert self.C_fin is not None, "CAPEX not defined."
-#        assert set(self.C_fin.index) == set(capex_idx), "Index of CAPEX not correct."
+        assert self.V1 is not None, "V1 table undefined"
+        assert self.V1.index.names == IDX_NAME_VEL, f"incorrect indices of V1 table, expect {IDX_NAME_VEL}"
 
+        # consistency of columns
+        if not (set(self.I0.columns) == set(self.I1.columns) == set(self.V0.columns) == set(self.V1.columns)):
+            raise ValueError(f"year ranges in intensity and velocity tables are not same")
+        
+        for dff in [self.I0, self.I1, self.V0, self.V1]:
+            check_year_order(dff, self.yr_init, self.yr_end, self.N_yr)
+            check_table_content(dff)
+
+        # road parameters
+        assert self.RP is not None, "road parameters table undefined"
+        if set(self.RP.columns) != set(COLS_ROAD_PARAMS):
+            raise ValueError((
+                f"Incorrect columns of road parameters table, "
+                f"submitted: {self.RP.columns}, required: {COLS_ROAD_PARAMS}"))
+
+        # capex table
+        assert self.C_fin is not None, "CAPEX table undefined"
+        # FIX, define required capex index correctly
+        # if not set(self.C_fin.index) == set(IDX_CAPEX):
+        #     raise ValueError((
+        #         f"incorrect index of CAPEX, "
+        #         f"submitted: {self.C_fin.index}, required: {IDX_CAPEX}"))
 
     def _verify_param_integrity(self):
         """Verify that all the relevant parameter frames contain 
         correct columns and indices"""
+        # TODO: check if years agree
         pass
 
 
@@ -279,9 +335,11 @@ class RoadCBA(ParamContainer):
 
         # collect investment before the first year
         capex_yrs = self.C_fin.columns
-        if len(capex_yrs[capex_yrs < self.yr_init]) != 0:
+        if len(capex_yrs[capex_yrs < self.yr_init]) > 0:
             if self.verbose:
-                print("Squeezing CAPEX into the given economic period...")
+                print(f"Squeezing CAPEX {capex_yrs} into the given economic period starting with {self.yr_init}...")
+            if self.yr_init not in capex_yrs:
+                self.C_fin[self.yr_init] = 0.0
             yrs_bef = capex_yrs[capex_yrs < self.yr_init]
             yrs_aft = capex_yrs[capex_yrs >= self.yr_init]
             self.C_fin[self.yr_init] += self.C_fin[yrs_bef].sum(1)
@@ -320,32 +378,31 @@ class RoadCBA(ParamContainer):
         RV = self.df_clean["res_val"].copy()
         RV.replacement_cost_ratio.fillna(1.0, inplace=True)
         RV["op_period"] = self.N_yr_op
-        RV["replace"] = \
-            np.where(RV.lifetime <= RV.op_period, 1, 0)
-        RV["rem_ratio"] = \
-            np.where(RV.lifetime <= RV.op_period,\
-            (2*RV.lifetime - RV.op_period) / RV.lifetime,\
-            (RV.lifetime - RV.op_period) / RV.lifetime).round(2)
+        RV["replace"] = np.where(RV.lifetime <= RV.op_period, 1, 0)
+        RV["rem_ratio"] = np.where(
+            RV.lifetime <= RV.op_period,
+            (2*RV.lifetime - RV.op_period) / RV.lifetime,
+            (RV.lifetime - RV.op_period) / RV.lifetime
+        ).round(2)
         RV.rem_ratio.fillna(1.0, inplace=True) # fill land
 
         # financial
-        self.RV_fin = RV.merge(self.C_fin_tot, how="left", on="item")\
-            .fillna(0)
-        self.RV_fin["res_value"] = np.where(self.RV_fin.replace == 0,\
-            self.RV_fin.value * self.RV_fin.rem_ratio,\
-            self.RV_fin.value * self.RV_fin.rem_ratio * \
-                self.RV_fin.replacement_cost_ratio)
+        self.RV_fin = RV.merge(self.C_fin_tot, how="left", on="item").fillna(0)
+        self.RV_fin["res_value"] = np.where(self.RV_fin.replace == 0,
+            self.RV_fin.value * self.RV_fin.rem_ratio,
+            self.RV_fin.value * self.RV_fin.rem_ratio * self.RV_fin.replacement_cost_ratio)
 
         # economic
         self.RV_eco = RV.merge(self.C_eco_tot, how="left", on="item")
-        self.RV_eco["res_value"] = np.where(self.RV_eco.replace == 0,\
-            self.RV_eco.value * self.RV_eco.rem_ratio,\
-            self.RV_eco.value * self.RV_eco.rem_ratio * \
-                self.RV_eco.replacement_cost_ratio)
+        self.RV_eco["res_value"] = np.where(
+            self.RV_eco.replace == 0,
+            self.RV_eco.value * self.RV_eco.rem_ratio,
+            self.RV_eco.value * self.RV_eco.rem_ratio * self.RV_eco.replacement_cost_ratio)
 
-        self.NB["res_val"] = pd.Series(\
-            np.array([0] * (self.N_yr-1) + [1]) * self.RV_eco.res_value.sum(),\
-            index=self.yrs)
+        self.NB["res_val"] = pd.Series(
+            np.array([0] * (self.N_yr-1) + [1]) * self.RV_eco.res_value.sum(),
+            index=self.yrs
+        )
 
 
     def compute_opex(self):
@@ -353,7 +410,7 @@ class RoadCBA(ParamContainer):
         if self.verbose:
             print("Computing OPEX...")
 
-        assert len(self.UC.keys()) != 0, "Create unit costs first."
+        assert len(self.UC.keys()) != 0, "before computing OPEX, create unit costs first"
 
         UC = self.UC["c_op"].copy()
         lvl_order = ["id_section", "operation_type", "item"]
@@ -364,18 +421,18 @@ class RoadCBA(ParamContainer):
 
         UC = UC.reset_index(["item"])
         UC["area_type"] = UC.item.map(lambda x: define_area(x))
-        UC = UC.reset_index().set_index(["category", "operation_type", \
-            "area_type", "item"]).sort_index()
+        UC = UC.reset_index().set_index(
+            ["category", "operation_type", "area_type", "item"]).sort_index()
         
         # variant 0
-        RA0 = self.RP.loc[self.secs_0, ["category", "length", \
-            "length_bridges", "length_tunnels", "width"]].copy()
+        RA0 = self.RP.loc[self.secs_0, 
+            ["category", "length", "length_bridges", "length_tunnels", "width"]].copy()
         RA0["pavements"] = RA0.width * RA0.length * 1e3
         RA0["bridges"] = RA0.width * RA0.length_bridges * 1e3
         RA0["tunnels"] = RA0.width * RA0.length_tunnels * 1e3
-        RA0 = RA0.drop(\
+        RA0 = RA0.drop(
             columns=["length", "length_bridges", "length_tunnels", "width"])
-        RA0 = RA0.reset_index().melt(id_vars=["id_section", "category"], \
+        RA0 = RA0.reset_index().melt(id_vars=["id_section", "category"],
             var_name="area_type", value_name="value")
         RA0 = RA0.groupby(["id_section", "category", "area_type"])\
             [["value"]].sum()
@@ -386,7 +443,7 @@ class RoadCBA(ParamContainer):
         
         # summary
         assert hasattr(self, "mask0"), "Create OPEX mask first."
-        self.O0_fin = (RA0 * (UC * self.mask0)).dropna().droplevel(\
+        self.O0_fin = (RA0 * (UC * self.mask0)).dropna().droplevel(
             ["category", "area_type"]).reorder_levels(lvl_order).sort_index()
         
         # variant 1
@@ -395,24 +452,23 @@ class RoadCBA(ParamContainer):
         if not O1_repl.empty:
             O1_repl[self.yrs_op] = 0.0
         
-        RA1 = self.RP.loc[self.secs_new, ["category", "length",\
-            "length_bridges", "length_tunnels", "width"]].copy()
+        RA1 = self.RP.loc[self.secs_new,
+            ["category", "length", "length_bridges", "length_tunnels", "width"]].copy()
         RA1["pavements"] = RA1.width * RA1.length * 1e3
         RA1["bridges"] = RA1.width * RA1.length_bridges * 1e3
         RA1["tunnels"] = RA1.width * RA1.length_tunnels * 1e3
-        RA1 = RA1.drop(columns=["length", "length_bridges", \
-            "length_tunnels", "width"])
-        RA1 = RA1.reset_index().melt(id_vars=["id_section", "category"], \
+        RA1 = RA1.drop(
+            columns=["length", "length_bridges", "length_tunnels", "width"])
+        RA1 = RA1.reset_index().melt(id_vars=["id_section", "category"],
             var_name="area_type", value_name="value")
-        RA1 = RA1.groupby(["id_section", "category", "area_type"])\
-            [["value"]].sum()
+        RA1 = RA1.groupby(["id_section", "category", "area_type"])[["value"]].sum()
         
         # time matrix of road areas
-        RA1 = pd.DataFrame(np.outer(RA1.value, np.ones_like(self.yrs)), \
+        RA1 = pd.DataFrame(np.outer(RA1.value, np.ones_like(self.yrs)),
             index=RA1.index, columns=self.yrs)
         
         # summary
-        O1_new = (RA1 * (UC * self.mask1)).dropna().droplevel(\
+        O1_new = (RA1 * (UC * self.mask1)).dropna().droplevel(
             ["category", "area_type"]).reorder_levels(lvl_order).sort_index()
         self.O1_fin = pd.concat([O1_old, O1_repl, O1_new]).sort_index()
         
@@ -421,7 +477,7 @@ class RoadCBA(ParamContainer):
         cf = self.df_clean[c]\
             .loc[self.df_clean[c].expense_type == "operation", "aggregate"]
         cf.index.name = "operation_type"
-        cf = pd.DataFrame(np.outer(cf, np.ones_like(self.yrs)), \
+        cf = pd.DataFrame(np.outer(cf, np.ones_like(self.yrs)),
             columns=self.yrs, index=cf.index)
         
         self.O0_eco = self.O0_fin * cf
@@ -595,13 +651,15 @@ class RoadCBA(ParamContainer):
             print("\nComputing ENPV, ERR, BCR...")
         self.df_eco = pd.DataFrame(self.NB).T
         self.df_eco = pd.concat(
-            [-pd.DataFrame(self.NC).T, pd.DataFrame(self.NB).T],\
-                   keys=["cost", "benefit"], names=["type", "item"]
+            [-pd.DataFrame(self.NC).T, pd.DataFrame(self.NB).T],
+            keys=["cost", "benefit"], names=["type", "item"]
         ).round(2)
+
+        self.df_eco = self.df_eco.fillna(0.0) # remove nans
 
         self.df_enpv = pd.DataFrame(
             self.df_eco.apply(
-                lambda x: np.npv(self.r_eco, x), axis=1
+                lambda x: npf.npv(self.r_eco, x), axis=1
             ).round(2), columns=["value"]
         )
 
@@ -821,3 +879,15 @@ class RoadCBA(ParamContainer):
     def financial_analysis(self):
         """Perform financial analysis"""
         raise NotImplementedError()
+    
+
+def check_year_order(dff, year_start, year_end, n_year):
+    pass
+
+def check_table_content(dff):
+    """Check if values are not missing and are all numeric"""
+    if dff.isna().sum().sum() != 0:
+        raise ValueError(f"nan values found one of intensity/velocity tables")
+    
+    if not dff.apply(lambda s: pd.to_numeric(s, errors='coerce').notnull().all()).all():
+        raise ValueError(f"non-numeric values in one of intensity/velocity tables")

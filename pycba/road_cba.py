@@ -118,7 +118,9 @@ class RoadCBA(ParamContainer):
         else:
             raise NotImplementedError()
 
-        super().adjust_cpi(yr_max=self.yr_end)
+        super().adjust_cpi()
+        super().adjust_gdp_growth()
+        super().adjust_greenhouse_cost()
         super().clean_params()
         super().adjust_price_level()
         super().wrangle_params()

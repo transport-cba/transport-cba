@@ -8,7 +8,7 @@ in the production folder.
 import pandas as pd
 
 country_code = "svk/"
-dirn = "../pycba/parameters/" + country_code
+dirn = "../transport_cba/parameters/" + country_code
 
 xls = pd.ExcelFile(dirn + "svk_cba_road_params_201912.xlsx")
 print("Sheet names:", xls.sheet_names)

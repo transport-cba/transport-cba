@@ -13,7 +13,7 @@ print(f"Source for testing: {transport_cba.__file__}")
 
 
 def test_whole_cba_pipeline():
-    """Test whole pipeline"""
+    """Test whole pipeline starting from loaded bypass"""
     b = load_sample_bypass()
     
     cba = RoadCBA(2020, "svk", verbose=True)

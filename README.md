@@ -1,4 +1,4 @@
-# pycba
+# transport-cba
 
 A Python module for cost-benefit analysis of infrastructure projects.
 
@@ -13,7 +13,7 @@ Main benefits compared to traiditional Excel-based approach:
 
 ## Installation
 ```
-pip install git+https://github.com/petervanya/pycba.git
+pip install git+https://github.com/petervanya/transport-cba.git
 ```
 
 ## Inputs
@@ -42,8 +42,8 @@ For illustration, download sample input (see below).
 NB: Values might differ slightly.
 
 ```python
->>> from pycba import RoadCBA
->>> from pycba.sample_projects import load_sample_bypass
+>>> from transport_cba import RoadCBA
+>>> from transport_cba.sample_projects import load_sample_bypass
 
 >>> bypass = load_sample_bypass()
 

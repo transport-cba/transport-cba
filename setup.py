@@ -4,14 +4,14 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="pycba",
+    name="transport-cba",
     version="0.1",
     author="Peter Vanya",
     author_email="peter.vanya@gmail.com",
     description="A Python package for cost-benefit analysis of infrastructure projects",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/petervanya/pycba",
+    url="https://github.com/petervanya/transport-cba",
     keywords="cost benefit analysis",
     packages=setuptools.find_packages(),
     classifiers=[

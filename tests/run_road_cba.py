@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-import pycba
-from pycba import RoadCBA
-from pycba.sample_projects import load_sample_bypass
+import transport_cba
+from transport_cba import RoadCBA
+from transport_cba.sample_projects import load_sample_bypass
 
 import numpy as np
 import pandas as pd
 
 print(f"numpy version: {np.__version__}")
 print(f"pandas version: {pd.__version__}")
-print(f"pycba version: {pycba.__version__}")
-print(f"Source for testing: {pycba.__file__}")
+print(f"transport_cba version: {transport_cba.__version__}")
+print(f"Source for testing: {transport_cba.__file__}")
 
 b = load_sample_bypass()
 

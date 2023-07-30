@@ -26,7 +26,7 @@ Meaning of required inputs:
 * vehicle intensities in variant 0 and 1 (without and with the project) by road segment
 * vehicle velocities in variant 0 and 1 by segment
 
-For illustration, download sample input (see below).
+For illustration, please download the sample input (see below).
 
 
 ## Outputs

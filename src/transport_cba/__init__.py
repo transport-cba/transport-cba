@@ -1,4 +1,4 @@
 from .road_cba import RoadCBA
 from .param_container import ParamContainer
 
-from .version import __version__
+__version__ = "0.1"

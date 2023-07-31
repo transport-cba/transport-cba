@@ -28,5 +28,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 
+[tool.setuptools.packages.find]
+where = ["transport_cba"]
+
 [project.urls]
 Homepage = "https://github.com/transport-cba/transport-cba"

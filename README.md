@@ -13,7 +13,7 @@ Main benefits compared to traiditional Excel-based approach:
 
 ## Installation
 ```
-pip install git+https://github.com/transport-cba/transport-cba.git
+pip install transport-cba
 ```
 
 ## Inputs

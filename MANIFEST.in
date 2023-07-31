@@ -1,0 +1,3 @@
+include examples/*.csv
+include examples/cba_sample_bypass.xlsx
+include parameters/*/*.csv

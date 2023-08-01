@@ -19,7 +19,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3',
-    packages=setuptools.find_packages(where="transport_cba"),
+    packages=setuptools.find_packages(),
     package_data={"": ["examples/*.csv", "examples/cba_sample_bypass.xlsx", "parameters/*/*.csv"]},
     install_requires=["numpy>=1.16, <2", "pandas>=0.24, <1.3"],
 )

@@ -22,3 +22,4 @@ cba.save_inputs_to_excel()
 # compute cba
 res = cba.economic_analysis()
 print(res)
+res.to_csv("economic_result.csv", index=False)

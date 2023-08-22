@@ -12,8 +12,13 @@ Main benefits compared to traiditional Excel-based approach:
 
 
 ## Installation
+From pip:
 ```
 pip install transport-cba
+```
+Or directly from git:
+```
+pip install git+https://github.com/transport-cba/transport-cba.git
 ```
 
 ## Inputs
@@ -59,8 +64,9 @@ NB: Values might differ slightly.
 >>> cba.economic_analysis()
 >>> cba.economic_indicators
 ```
-|   | Quantity | Unit  | Value |
-|---|----------|-------|-------|
-| 0 | ENPV     | M EUR | 3.336 |
-| 1 | ERR      | %     | 5.62  |
-| 2 | BCR      |       | 1.076 |
+|    | Quantity   | Unit   |   Value |
+|---:|:-----------|:-------|--------:|
+|  0 | ENPV       | M EUR  |   3.336 |
+|  1 | ERR        | %      |   5.62  |
+|  2 | BCR        |        |   1.076 |
+```
